@@ -136,7 +136,7 @@ export default function ChatInput({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Message SureshGPT... (type /image to generate, or attach an image for OCR)"
+            placeholder="Message LEARN.GPT... (type /image to generate, or attach an image for OCR)"
             disabled={disabled}
             className="flex-1 bg-transparent border-0 text-sm text-white placeholder-zinc-500 focus:outline-none resize-none py-1.5 max-h-48 scrollbar-thin scrollbar-thumb-zinc-700"
           />
@@ -170,7 +170,7 @@ export default function ChatInput({
 
         {/* Bottom Disclaimer */}
         <p className="text-[11px] text-center text-zinc-500 mt-2">
-          SureshGPT can make mistakes. Verify critical facts and information. Hosted on Groq Cloud.
+          LEARN.GPT can make mistakes. Verify critical facts and information. Hosted on Groq Cloud.
         </p>
       </div>
     </div>

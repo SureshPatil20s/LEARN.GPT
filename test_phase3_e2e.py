@@ -46,7 +46,7 @@ async def run_tests():
         print("✓ Google OAuth login OK!")
 
         # 5. Create Conversation
-        conv_payload = {"title": "Architecture & RAG Discussion", "model": "llama-3.3-70b-versatile"}
+        conv_payload = {"title": "Architecture & RAG Discussion", "model": "openai/gpt-oss-20b"}
         res = await client.post("/api/v1/conversations", json=conv_payload, headers=headers)
         assert res.status_code in [200, 201], f"Create conv failed: {res.text}"
         conv = res.json()
@@ -72,7 +72,7 @@ async def run_tests():
         chat_req = {
             "conversation_id": conv_id,
             "content": "What LLM models and database does Project Phase 3 use according to the specification?",
-            "model": "llama-3.3-70b-versatile",
+            "model": "openai/gpt-oss-20b",
             "use_rag": True
         }
         
@@ -130,8 +130,8 @@ async def run_tests():
         assert "image.pollinations.ai" in img_stream_text
         print("✓ Free Image Generation (Flux.1) stream OK! Generated URL found in output.")
 
-        # 11. Test Free Vision & OCR (Llama 3.2 11B Vision)
-        async with client.stream("POST", "/api/v1/messages/stream", json={"conversation_id": img_conv_id, "content": "Extract all text from this scan", "model": "llama-3.2-11b-vision-preview", "image_data": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="}, headers=headers) as stream_res:
+        # 11. Test Free Vision & OCR (GPT OSS 120B Vision)
+        async with client.stream("POST", "/api/v1/messages/stream", json={"conversation_id": img_conv_id, "content": "Extract all text from this scan", "model": "openai/gpt-oss-120b-vision", "image_data": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="}, headers=headers) as stream_res:
             assert stream_res.status_code == 200
             vision_stream_text = ""
             async for line in stream_res.aiter_lines():
@@ -142,7 +142,7 @@ async def run_tests():
                             vision_stream_text += p["delta"]
                     except Exception:
                         pass
-        print("✓ Free Vision & OCR (Llama 3.2 11B Vision) stream OK!")
+        print("✓ Free Vision & OCR (GPT OSS 120B Vision) stream OK!")
 
         print("\n🎉 ALL PHASE 3 BACKEND API TESTS (AUTH, RAG, IMAGE GEN, OCR) PASSED SUCCESSFULLY!")
 

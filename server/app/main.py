@@ -1,5 +1,5 @@
 """
-FastAPI Main Application Entry Point for SURESH.GPT Platform.
+FastAPI Main Application Entry Point for LEARN.GPT Platform.
 - Configures CORS for Next.js frontend
 - Registers Authentication, Chat & Document routers
 - Auto-initializes database tables

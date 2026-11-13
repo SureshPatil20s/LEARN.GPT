@@ -1,4 +1,4 @@
-# 🤖 SureshGPT — Phase 3: ChatGPT-Style AI Platform
+# 🤖 LEARN.GPT — Phase 3: ChatGPT-Style AI Platform
 
 [![Next.js](https://img.shields.io/badge/Next.js-16.4-black.svg?logo=next.js)](https://nextjs.org/)
 [![React](https://img.shields.io/badge/React-19.3-blue.svg?logo=react)](https://react.dev/)
@@ -8,7 +8,7 @@
 [![Groq Cloud](https://img.shields.io/badge/Groq-LPU_Hosted_Inference-F55036.svg)](https://groq.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Ready-336791.svg?logo=postgresql)](https://www.postgresql.org/)
 
-An enterprise-grade, multi-user ChatGPT-style web platform built with **Next.js (App Router)**, **React 19**, **TypeScript**, **Tailwind CSS**, and a high-performance **FastAPI** backend. Powered by hosted cloud LLMs (**Groq Cloud**, **Llama 3.3 70B**, **Qwen 2.5 32B**) with zero local GPU required.
+An enterprise-grade, multi-user ChatGPT-style web platform built with **Next.js (App Router)**, **React 19**, **TypeScript**, **Tailwind CSS**, and a high-performance **FastAPI** backend. Powered by hosted cloud LLMs (**Groq Cloud**) with zero local GPU required.
 
 ---
 
@@ -30,9 +30,9 @@ Open a terminal in the project root and run:
 ```bash
 python -m uvicorn server.app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
-- **Backend API:** [http://localhost:8000](http://localhost:8000)
-- **Interactive Swagger Docs:** [http://localhost:8000/docs](http://localhost:8000/docs)
-- **Health Check:** [http://localhost:8000/health](http://localhost:8000/health)
+- **Backend API:** http://localhost:8000
+- **Interactive Swagger Docs:** http://localhost:8000/docs
+- **Health Check:** http://localhost:8000/health
 
 #### Step 2: Start the Next.js Frontend
 Open a second terminal, navigate into the `client` directory, and start the development server:
@@ -40,76 +40,110 @@ Open a second terminal, navigate into the `client` directory, and start the deve
 cd client
 npm run dev
 ```
-- **Web Application:** [http://localhost:3000](http://localhost:3000)
+- **Web Application:** http://localhost:3000
 
 ---
 
-## ⚙️ Configuration (`.env`)
+## ⚙️ Configuration
 
-In the project root, open [.env](file:///c:/Users/sures/Desktop/Academia/LLM-XRAY_PROJECT/.env):
+### Required — `.env` (project root)
 
 ```ini
-# 1. Groq Hosted LLM API Key (Free at https://console.groq.com/keys)
-# If left blank, the platform runs in local simulation mode for testing
-GROQ_API_KEY=gsk_your_groq_api_key_here
+# 1. Groq Hosted LLM API Key
+# Free key at: https://console.groq.com/keys
+GROQ_API_KEY=gsk_your_key_here
 
-# 2. Default Model
-DEFAULT_MODEL=llama-3.3-70b-versatile
+# 2. Default Model (confirmed working on your Groq key)
+DEFAULT_MODEL=openai/gpt-oss-20b
+```
 
-# 3. Database (Optional for Cloud PostgreSQL)
-# Leave blank to automatically use local SQLite (zero configuration needed)
-# Or enter a PostgreSQL connection string (e.g. Supabase, Neon, Render):
+### Optional — Google OAuth (any user can sign in with their Google account)
+
+**Step 1:** Go to https://console.cloud.google.com → APIs & Services → Credentials  
+**Step 2:** Create OAuth 2.0 Client ID → Application type: **Web application**  
+**Step 3:** Add authorized origins: `http://localhost:3000`  
+**Step 4:** Copy the Client ID and add to both files:
+
+```ini
+# .env (backend — for ID token verification)
+GOOGLE_CLIENT_ID=your_client_id_here.apps.googleusercontent.com
+```
+
+```ini
+# client/.env.local (frontend — for the sign-in popup)
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=your_client_id_here.apps.googleusercontent.com
+```
+
+> When configured, the "Continue with Google" button opens a real Google account picker — any Google account works, not just one specific person. The backend verifies the credential JWT cryptographically.
+
+> Without it, the Google button shows a setup notice and email/password login still works normally.
+
+### Optional — FLUX.1-schnell Image Generation (much better quality)
+
+**Step 1:** Create a free account at https://huggingface.co  
+**Step 2:** Go to Settings → Access Tokens → New Token (Read access, free)  
+**Step 3:** Add to `.env`:
+
+```ini
+# .env
+HF_TOKEN=hf_your_token_here
+```
+
+> With `HF_TOKEN`: uses **FLUX.1-schnell** (Black Forest Labs, state-of-the-art quality, 4-step ultra-fast diffusion)  
+> Without `HF_TOKEN`: falls back to **Pollinations Turbo** (unlimited, no key, lower quality)
+
+### Optional — PostgreSQL (Cloud Database)
+
+```ini
+# .env — leave blank for auto SQLite fallback
 # DATABASE_URL=postgresql://user:password@host:5432/dbname
-
-# 4. Security
-SECRET_KEY=suresh_gpt_super_secret_jwt_key_2026_phase3_production
 ```
 
 ---
 
 ## 🌟 Core Features
 
-### 1. Modern ChatGPT-Style UI (No Streamlit)
-- Sleek ChatGPT dark theme (`#121212`, `#212121`, emerald accents).
+### 1. Modern ChatGPT-Style UI
+- Sleek dark theme with emerald accents.
 - Sidebar with **+ New chat**, real-time search, pinned chats, and date-sorted conversation history.
-- Markdown and code block syntax highlighting with **1-click Copy Code** feedback.
-- Message actions: Copy full response, Regenerate answer, and Thumbs Up / Down rating.
+- Markdown and code block syntax highlighting with **1-click Copy Code**.
+- Message actions: Copy, Regenerate, Thumbs Up / Down rating.
 
-### 2. Hosted LLM Inference & Free Multimodal Models
-- **Llama 3.3 70B & Qwen 2.5 32B:** Ultra-fast streaming (300+ tokens/sec) via Groq Cloud API.
-- **AI Image Generator (Free Turbo):** Type `/image <prompt>` to generate 1024×1024 high-resolution images inline with zero API key required.
-- **Multimodal Vision & OCR:** Attach images (`.png`, `.jpg`, `.jpeg`, `.webp`) for automatic text extraction, document transcription, and visual analysis.
+### 2. Hosted LLM Inference & Free Multimodal
+- **GPT OSS 20B / 120B & Qwen3.8 27B:** Ultra-fast streaming via Groq Cloud API.
+- **AI Image Generator:** Type `/image <prompt>` to generate 1024×1024 images inline.
+  - Primary: FLUX.1-schnell via HuggingFace (best quality, free HF token)
+  - Fallback: Pollinations Turbo (no key, unlimited)
+- **Vision & OCR:** Attach images for automatic text extraction and visual analysis.
 
 ### 3. Document Knowledge Base (RAG)
-- Multi-format file ingestion supporting **PDF, DOCX, TXT, CSV, and JSON**.
-- User-isolated semantic retrieval with provenance citation chips showing exact file name, page numbers, similarity scores, and source excerpts.
-- Real-time **RAG Toggle** switch in the top header to enable or disable document retrieval on the fly.
+- Multi-format ingestion: **PDF, DOCX, TXT, CSV, JSON**.
+- Semantic retrieval with provenance citation chips (file name, page, similarity score).
+- Real-time **RAG Toggle** in the header.
 
 ### 4. Authentication & Data Privacy
-- **User Registration & Login:** Salted bcrypt password hashing with JWT access tokens.
-- **Google OAuth:** 1-click Google authentication integration.
-- **Ephemeral Guest Mode:** Visitors can chat immediately without logging in; guest chats remain temporary and do not clutter the database.
-- **Persistent Storage:** Registered users get persistent, cross-device conversation histories stored in PostgreSQL / SQLite.
+- **Email/Password:** Salted bcrypt hashing with 7-day JWT tokens.
+- **Google OAuth:** Real sign-in popup via Google Identity Services — any Google account works, with backend cryptographic token verification.
+- **Guest Mode:** Instant access without login; chats are ephemeral and not persisted.
+- **Persistent Storage:** Registered users get cross-device conversation history.
 
 ---
 
 ## 🧪 Testing & Verification
 
-Run the automated end-to-end test suite to verify all backend routes, auth flows, streaming, and RAG retrieval:
-
 ```bash
 python test_phase3_e2e.py
 ```
 
-Test coverage includes:
+Test coverage:
 - `✓ Health Check & Model Catalog`
 - `✓ Bcrypt Registration & JWT Login`
 - `✓ Google OAuth Sign-In`
 - `✓ Guest Seamless Session`
 - `✓ Multi-format Document Ingestion & Chunking`
-- `✓ Real-time SSE Chat Streaming with RAG Provenance Citations`
-- `✓ Free Image Generation (Turbo Diffusion)`
-- `✓ Free Vision & OCR (Llama 3.2 Vision)`
+- `✓ Real-time SSE Chat Streaming with RAG Citations`
+- `✓ Free Image Generation (FLUX.1-schnell / Pollinations fallback)`
+- `✓ Free Vision & OCR (GPT OSS 120B Vision)`
 
 ---
 
@@ -121,25 +155,28 @@ LLM-XRAY_PROJECT/
 │   ├── src/
 │   │   ├── app/                # App router (page.tsx, layout.tsx, globals.css)
 │   │   ├── components/         # Sidebar, Navbar, ChatArea, ChatInput, Modals
+│   │   │                       # GoogleOAuthWrapper (real Google sign-in)
 │   │   ├── context/            # AuthContext (JWT & session state)
 │   │   ├── lib/                # API client with SSE streaming reader
 │   │   └── types/              # Strict TypeScript interfaces
+│   ├── .env.local              # NEXT_PUBLIC_API_URL, NEXT_PUBLIC_GOOGLE_CLIENT_ID
 │   └── package.json
 │
 ├── server/                     # FastAPI Python Backend
 │   └── app/
-│       ├── api/                # auth.py, chat.py, documents.py routers
-│       ├── core/               # config.py, security.py (JWT + bcrypt)
+│       ├── api/                # auth.py (Google token verify), chat.py, documents.py
+│       ├── core/               # config.py (HF_TOKEN, GOOGLE_CLIENT_ID), security.py
 │       ├── db/                 # session.py (PostgreSQL & SQLite engine)
 │       ├── models/             # entities.py (SQLAlchemy ORM models)
-│       ├── schemas/            # schemas.py (Pydantic v2 validation models)
-│       ├── services/           # llm_service.py (Groq & Image), rag_service.py
+│       ├── schemas/            # schemas.py (Pydantic v2 validation)
+│       ├── services/           # llm_service.py (Groq + FLUX.1-schnell + Pollinations)
+│       │                       # rag_service.py (PDF/DOCX/TXT/CSV/JSON chunking)
 │       └── main.py             # FastAPI application entry point
 │
 ├── run_phase3.bat              # 1-Click Windows launcher for both servers
 ├── run_backend.bat             # FastAPI backend runner script
 ├── run_frontend.bat            # Next.js frontend runner script
 ├── test_phase3_e2e.py          # Automated verification test suite
-├── .env                        # Environment configuration
+├── .env                        # Environment configuration (Groq, Google, HF, DB)
 └── README.md                   # Project documentation
 ```

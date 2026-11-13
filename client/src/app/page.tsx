@@ -31,13 +31,14 @@ export default function Home() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [models, setModels] = useState<ModelOption[]>([]);
-  const [selectedModel, setSelectedModel] = useState<string>('llama-3.3-70b-versatile');
+  const [selectedModel, setSelectedModel] = useState<string>('openai/gpt-oss-20b');
   const [useRag, setUseRag] = useState<boolean>(true);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
 
   // UI state
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
   const [docModalOpen, setDocModalOpen] = useState<boolean>(false);
+  const [backendOffline, setBackendOffline] = useState<boolean>(false);
 
   // Streaming state
   const [isStreaming, setIsStreaming] = useState<boolean>(false);
@@ -45,7 +46,7 @@ export default function Home() {
   const [streamingSources, setStreamingSources] = useState<RagSource[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Load Models
+  // Load Models & Check Backend Connectivity
   useEffect(() => {
     getAvailableModels()
       .then((data) => {
@@ -53,7 +54,15 @@ export default function Home() {
         const def = data.find((m) => m.is_default);
         if (def) setSelectedModel(def.id);
       })
-      .catch((err) => console.error('Failed to load models:', err));
+      .catch(() => {});
+
+    // Health check
+    fetch('http://localhost:8000/health')
+      .then((res) => {
+        if (!res.ok) setBackendOffline(true);
+        else setBackendOffline(false);
+      })
+      .catch(() => setBackendOffline(true));
   }, []);
 
   // Load Conversations and Documents on mount / user change
@@ -312,6 +321,22 @@ export default function Home() {
           docCount={documents.length}
           onOpenDocuments={() => setDocModalOpen(true)}
         />
+
+        {/* Backend Offline Notice */}
+        {backendOffline && (
+          <div className="bg-amber-950/80 border-b border-amber-800/80 px-4 py-2 text-xs text-amber-200 flex items-center justify-between z-30">
+            <div className="flex items-center gap-2">
+              <span className="font-bold">⚠️ FastAPI Backend Offline:</span>
+              <span>FastAPI is not running on port 8000. Launch <code className="bg-amber-900/60 px-1.5 py-0.5 rounded text-white font-mono">run_backend.bat</code> or <code className="bg-amber-900/60 px-1.5 py-0.5 rounded text-white font-mono">run_phase3.bat</code> to connect.</span>
+            </div>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-2.5 py-1 rounded bg-amber-700 hover:bg-amber-600 text-white font-semibold text-[11px] transition"
+            >
+              Retry
+            </button>
+          </div>
+        )}
 
         {/* Chat Feed */}
         <ChatArea

@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker
 import os
 from server.app.core.config import settings
 
-db_url = settings.DATABASE_URL or "sqlite:///./data/conversations/suresh_gpt_platform.db"
+db_url = settings.DATABASE_URL or "sqlite:///./data/conversations/learn_gpt_platform.db"
 # Handle postgres:// to postgresql:// dialect conversion if provided by providers like Neon/Supabase/Render
 if db_url.startswith("postgres://"):
     db_url = db_url.replace("postgres://", "postgresql://", 1)

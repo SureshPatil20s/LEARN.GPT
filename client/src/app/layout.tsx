@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
+import GoogleOAuthWrapper from '@/components/GoogleOAuthWrapper';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -14,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'SureshGPT — Phase 3 ChatGPT-Style AI Platform',
-  description: 'Enterprise AI chat platform powered by Groq Llama 3.3 70B & Qwen 2.5 with document RAG knowledge base',
+  title: 'LEARN.GPT — AI Learning Platform',
+  description: 'Enterprise AI chat platform powered by Groq hosted models with document RAG knowledge base',
 };
 
 export default function RootLayout({
@@ -28,7 +29,9 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased h-full bg-[#121212] text-zinc-100 flex flex-col`}
       >
-        <AuthProvider>{children}</AuthProvider>
+        <GoogleOAuthWrapper>
+          <AuthProvider>{children}</AuthProvider>
+        </GoogleOAuthWrapper>
       </body>
     </html>
   );

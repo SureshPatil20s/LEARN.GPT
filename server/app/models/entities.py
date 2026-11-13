@@ -1,5 +1,5 @@
 """
-SQLAlchemy Database Models for SURESH.GPT Platform:
+SQLAlchemy Database Models for LEARN.GPT Platform:
 - Users (auth, Google OAuth, settings)
 - Conversations (title, pinned, timestamps, foreign key to user)
 - Messages (role, content, model, tokens, sources, feedback)
@@ -31,7 +31,7 @@ class User(Base):
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # User Preferences
-    system_prompt = Column(Text, default="You are SURESH.GPT, a knowledgeable, concise, and helpful AI assistant.")
+    system_prompt = Column(Text, default="You are LEARN.GPT, a knowledgeable, concise, and helpful AI assistant.")
     default_model = Column(String(64), default="llama-3.3-70b-versatile")
     temperature = Column(Float, default=0.7)
 
@@ -101,4 +101,17 @@ class DocumentChunk(Base):
 
     # Relationships
     document = relationship("Document", back_populates="chunks")
+
+
+class ImageGenerationLog(Base):
+    __tablename__ = "image_generation_logs"
+
+    id = Column(String(64), primary_key=True, default=generate_uuid)
+    user_id = Column(String(64), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    prompt = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+
+    # Relationships
+    user = relationship("User")
+
 

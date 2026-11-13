@@ -12,7 +12,7 @@ interface AuthContextType {
   setAuthModalOpen: (open: boolean) => void;
   login: (email: string, pass: string) => Promise<void>;
   register: (email: string, pass: string, name: string) => Promise<void>;
-  loginWithGoogle: (email: string, name: string, avatar?: string) => Promise<void>;
+  loginWithGoogle: (emailOrToken: string, name?: string, avatar?: string, idToken?: string) => Promise<void>;
   loginGuest: () => Promise<void>;
   updateUser: (name?: string, avatar?: string) => Promise<void>;
   logout: () => void;
@@ -85,8 +85,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAuthModalOpen(false);
   };
 
-  const loginWithGoogle = async (email: string, name: string, avatar?: string) => {
-    const res = await loginWithGoogleApi(email, name, avatar);
+  const loginWithGoogle = async (emailOrToken: string, name?: string, avatar?: string, idToken?: string) => {
+    // Determine whether first param is a JWT token or an email
+    const isToken = typeof emailOrToken === 'string' &&
+      emailOrToken.startsWith('eyJ') &&
+      !emailOrToken.includes('@');
+
+    const tokenToSend = isToken ? emailOrToken : idToken;
+    const emailToSend = isToken ? undefined : emailOrToken;
+
+    const res = await loginWithGoogleApi(
+      emailToSend,
+      name || '',
+      avatar,
+      tokenToSend
+    );
     setTokenState(res.access_token);
     setUser(res.user);
     setAuthModalOpen(false);

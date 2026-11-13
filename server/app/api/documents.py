@@ -66,6 +66,7 @@ async def upload_document(
     db.commit()
     db.refresh(doc)
 
+    chunk_objects = []
     for item in chunks_data:
         chunk = DocumentChunk(
             document_id=doc.id,
@@ -74,7 +75,17 @@ async def upload_document(
             content=item.get("content", "")
         )
         db.add(chunk)
+        chunk_objects.append(chunk)
     db.commit()
+
+    # Generate and persist vector embeddings for all chunks (real semantic RAG)
+    # Uses sentence-transformers all-MiniLM-L6-v2 locally — no API key needed
+    try:
+        rag_service.embed_chunks(db, chunk_objects)
+    except Exception as e:
+        # Non-fatal: upload still succeeds; search falls back to on-the-fly embedding
+        import logging
+        logging.warning(f"Embedding generation failed for {filename}: {e}")
 
     setattr(doc, "chunk_count", doc.total_chunks)
     return doc

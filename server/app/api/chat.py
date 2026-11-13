@@ -12,10 +12,11 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
+from datetime import datetime, timezone
 import json
 
 from server.app.db.session import get_db
-from server.app.models.entities import User, Conversation, Message
+from server.app.models.entities import User, Conversation, Message, ImageGenerationLog
 from server.app.schemas.schemas import (
     ConversationResponse,
     ConversationCreate,
@@ -218,7 +219,7 @@ async def _handle_message_stream(
     sources_json = None
     if msg_in.use_rag:
         rag_context, sources_list = rag_service.search_user_documents(
-            db, current_user.id, msg_in.content, top_k=4
+            db, current_user.id, msg_in.content, top_k=12
         )
         if sources_list:
             sources_json = json.dumps(sources_list, ensure_ascii=False)
@@ -227,13 +228,67 @@ async def _handle_message_stream(
     history = db.query(Message).filter(Message.conversation_id == conversation_id).order_by(Message.created_at).all()
     system_text = current_user.system_prompt or "You are a helpful AI assistant."
     if rag_context:
-        system_text += f"\n\n[Relevant Reference Documents Grounding]:\n{rag_context}\n\nAnswer accurately using the above sources when relevant."
+        num_docs = len(set(s["filename"] for s in sources_list))
+        system_text += (
+            f"\n\n[DOCUMENT CONTEXT — {num_docs} document(s) retrieved from the user's {len(sources_list)} most relevant sections]:\n"
+            f"{rag_context}\n\n"
+            "IMPORTANT INSTRUCTIONS:\n"
+            "- Answer the user's question using the document excerpts above as your PRIMARY source.\n"
+            "- If the specific information (e.g. 'Week 1 project') is not in the retrieved excerpts, say so clearly "
+            "and name the documents that WERE searched so the user knows.\n"
+            "- Do NOT say 'I've scanned all documents' — you are seeing the most relevant excerpts. "
+            "If the answer might be in a section not shown, tell the user to try searching with different keywords.\n"
+            "- Always cite the source filename and page number when quoting."
+        )
 
     llm_messages = [{"role": "system", "content": system_text}]
     for m in history[-8:]:  # Sliding window of last 8 turns
         llm_messages.append({"role": m.role, "content": m.content})
 
     chosen_model = msg_in.model or conv.model or current_user.default_model or settings.DEFAULT_MODEL
+
+    # Enforce Daily Image Generation Rate Limit (Strictly 10 images per user per day)
+    content_lower = msg_in.content.strip().lower()
+    is_image_request = (chosen_model == "flux-image-gen") or content_lower.startswith((
+        "/image", "generate image", "draw ", "create an image", "generate an image"
+    ))
+
+    if is_image_request:
+        today_start = datetime.combine(datetime.now(timezone.utc).date(), datetime.min.time()).replace(tzinfo=timezone.utc)
+        today_count = db.query(ImageGenerationLog).filter(
+            ImageGenerationLog.user_id == current_user.id,
+            ImageGenerationLog.created_at >= today_start
+        ).count()
+
+        if today_count >= 10:
+            limit_msg = (
+                "⚠️ **Daily Image Generation Limit Reached (10/10)**\n\n"
+                "You have used your maximum allowance of **10 AI image generations** for today.\n\n"
+                "- **Daily Quota:** 10 images / user\n"
+                f"- **Used Today:** {today_count} / 10\n"
+                "- **Quota Reset:** Midnight UTC (00:00 UTC)\n\n"
+                "💡 *You can continue unlimited text conversations with our language models (`GPT OSS 20B`, `GPT OSS 120B`, `Qwen 3.8`), "
+                "or return tomorrow for 10 fresh image generation credits!*"
+            )
+
+            async def limit_generator():
+                yield f"data: {json.dumps({'delta': limit_msg})}\n\n"
+                asst_msg = Message(
+                    conversation_id=conversation_id,
+                    role="assistant",
+                    content=limit_msg,
+                    model=chosen_model,
+                    sources=None
+                )
+                db.add(asst_msg)
+                db.commit()
+                yield "data: [DONE]\n\n"
+
+            return StreamingResponse(limit_generator(), media_type="text/event-stream")
+
+        # Record this image generation against user's daily quota
+        db.add(ImageGenerationLog(user_id=current_user.id, prompt=msg_in.content[:500]))
+        db.commit()
 
     # If image data is attached for Vision/OCR
     if msg_in.image_data and llm_messages:

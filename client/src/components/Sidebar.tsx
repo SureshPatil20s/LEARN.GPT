@@ -185,10 +185,10 @@ export default function Sidebar({
           <div className="flex items-center justify-between px-1">
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-lg bg-linear-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-black font-black text-sm shadow-md">
-                S
+                L
               </div>
               <span className="font-semibold text-white tracking-wide text-sm flex items-center gap-1.5">
-                SureshGPT
+                LEARN.GPT
                 <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800/60">
                   Pro
                 </span>

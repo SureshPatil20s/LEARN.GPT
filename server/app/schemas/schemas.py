@@ -22,8 +22,11 @@ class UserLogin(BaseModel):
 
 
 class GoogleAuthRequest(BaseModel):
+    # Real Google Sign-In: `credential` is the JWT ID token from @react-oauth/google
+    credential: Optional[str] = None
+    # Fallback fields (used when GOOGLE_CLIENT_ID is not yet configured)
     id_token: Optional[str] = None
-    email: EmailStr
+    email: Optional[EmailStr] = None
     name: Optional[str] = None
     avatar_url: Optional[str] = None
 
