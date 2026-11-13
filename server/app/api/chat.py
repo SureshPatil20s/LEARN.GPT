@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 import json
 
 from server.app.db.session import get_db
-from server.app.models.entities import User, Conversation, Message, ImageGenerationLog
+from server.app.models.entities import User, Conversation, Message, ImageGenerationLog, Document, DocumentChunk
 from server.app.schemas.schemas import (
     ConversationResponse,
     ConversationCreate,
@@ -198,10 +198,16 @@ async def _handle_message_stream(
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     # 1. Save User Message
+    stored_user_content = msg_in.content
+    if msg_in.attached_filename:
+        stored_user_content = f"📄 **[Attached Document: {msg_in.attached_filename}]**\n\n{msg_in.content}"
+    elif msg_in.image_data:
+        stored_user_content = f"🖼️ **[Attached Image]**\n\n{msg_in.content or 'Please extract all text (OCR) from this image and analyze its visual content.'}"
+
     user_msg = Message(
         conversation_id=conversation_id,
         role="user",
-        content=msg_in.content
+        content=stored_user_content
     )
     db.add(user_msg)
     db.commit()
@@ -218,27 +224,82 @@ async def _handle_message_stream(
     sources_list = []
     sources_json = None
     if msg_in.use_rag:
-        rag_context, sources_list = rag_service.search_user_documents(
-            db, current_user.id, msg_in.content, top_k=12
-        )
-        if sources_list:
-            sources_json = json.dumps(sources_list, ensure_ascii=False)
+        # Determine attached filename: from request schema or extracted from content tags
+        effective_filename = msg_in.attached_filename
+        if not effective_filename:
+            import re
+            match = re.search(r'\[Attached Document:\s*([^\]]+)\]', msg_in.content)
+            if match:
+                effective_filename = match.group(1).strip()
+
+        # If user explicitly attached a document or mentioned a filename, prioritize it
+        search_query = msg_in.content
+        if effective_filename:
+            search_query = f"{effective_filename} {msg_in.content}"
+        
+        # If query is generic like "explain attached file", look up the most recently uploaded document
+        is_generic_doc_query = any(phrase in msg_in.content.lower() for phrase in [
+            "attached file", "this document", "uploaded file", "this file", "explain the file",
+            "explain document", "summarize document", "summarize the file", "summarize this",
+            "what is in this", "what is in the file", "explain content", "explain the content",
+            "explain this document", "explain this file", "explain this"
+        ])
+
+        if effective_filename:
+            # Explicitly load all chunks of the attached document
+            target_doc = db.query(Document).filter(
+                Document.user_id == current_user.id,
+                Document.filename.ilike(f"%{effective_filename}%")
+            ).order_by(Document.created_at.desc()).first()
+        elif is_generic_doc_query:
+            # Default to the user's latest uploaded document
+            target_doc = db.query(Document).filter(
+                Document.user_id == current_user.id
+            ).order_by(Document.created_at.desc()).first()
+        else:
+            target_doc = None
+
+        if target_doc:
+            doc_chunks = db.query(DocumentChunk).filter(
+                DocumentChunk.document_id == target_doc.id
+            ).order_by(DocumentChunk.chunk_index.asc()).limit(20).all()
+
+            if doc_chunks:
+                context_blocks = []
+                sources_list = []
+                for c in doc_chunks:
+                    context_blocks.append(
+                        f"[Document: {target_doc.filename}, Page {c.page_number}]:\n{c.content}"
+                    )
+                    sources_list.append({
+                        "filename": target_doc.filename,
+                        "page": c.page_number,
+                        "similarity": 100.0,
+                        "snippet": c.content[:160] + "..." if len(c.content) > 160 else c.content
+                    })
+                rag_context = "\n\n".join(context_blocks)
+                sources_json = json.dumps(sources_list, ensure_ascii=False)
+
+        # If not satisfied by target_doc, perform semantic hybrid vector search
+        if not rag_context:
+            rag_context, sources_list = rag_service.search_user_documents(
+                db, current_user.id, search_query, top_k=12
+            )
+            if sources_list:
+                sources_json = json.dumps(sources_list, ensure_ascii=False)
 
     # 3. Assemble Prompt Messages History
     history = db.query(Message).filter(Message.conversation_id == conversation_id).order_by(Message.created_at).all()
-    system_text = current_user.system_prompt or "You are a helpful AI assistant."
+    system_text = current_user.system_prompt or "You are LEARN.GPT, a knowledgeable, concise, and helpful AI assistant."
     if rag_context:
         num_docs = len(set(s["filename"] for s in sources_list))
         system_text += (
-            f"\n\n[DOCUMENT CONTEXT — {num_docs} document(s) retrieved from the user's {len(sources_list)} most relevant sections]:\n"
+            f"\n\n[REFERENCE DOCUMENTS — {num_docs} document(s) with {len(sources_list)} relevant sections]:\n"
             f"{rag_context}\n\n"
-            "IMPORTANT INSTRUCTIONS:\n"
-            "- Answer the user's question using the document excerpts above as your PRIMARY source.\n"
-            "- If the specific information (e.g. 'Week 1 project') is not in the retrieved excerpts, say so clearly "
-            "and name the documents that WERE searched so the user knows.\n"
-            "- Do NOT say 'I've scanned all documents' — you are seeing the most relevant excerpts. "
-            "If the answer might be in a section not shown, tell the user to try searching with different keywords.\n"
-            "- Always cite the source filename and page number when quoting."
+            "GUIDELINES FOR USING REFERENCE DOCUMENTS:\n"
+            "1. DOCUMENT QUESTIONS: When the user asks about specific topics, projects, assignments, or details contained in the reference documents above, use them as your primary ground truth and cite the source filename & page number.\n"
+            "2. GENERAL QUESTIONS: For all general questions (such as greetings, programming & coding tasks, math, explanations of broad concepts, science, history, creative writing, advice, etc.), answer COMPREHENSIVELY, HELPINGLY, and DIRECTLY using your full general AI knowledge. Do NOT restrict yourself to the documents for questions not specifically asking about them.\n"
+            "3. If the user explicitly asks for something from their uploaded documents that is not in the excerpts, let them know clearly."
         )
 
     llm_messages = [{"role": "system", "content": system_text}]
@@ -267,7 +328,7 @@ async def _handle_message_stream(
                 "- **Daily Quota:** 10 images / user\n"
                 f"- **Used Today:** {today_count} / 10\n"
                 "- **Quota Reset:** Midnight UTC (00:00 UTC)\n\n"
-                "💡 *You can continue unlimited text conversations with our language models (`GPT OSS 20B`, `GPT OSS 120B`, `Qwen 3.8`), "
+                "💡 *You can continue unlimited text conversations with our language models (`Gemini 2.0 Flash`, `Gemini 2.5 Flash Lite`, `Qwen 3.8 Groq`), "
                 "or return tomorrow for 10 fresh image generation credits!*"
             )
 
@@ -290,17 +351,12 @@ async def _handle_message_stream(
         db.add(ImageGenerationLog(user_id=current_user.id, prompt=msg_in.content[:500]))
         db.commit()
 
-    # If image data is attached for Vision/OCR
+    # If image data is attached, the IntelligentRouter handles OCR/Vision automatically.
+    # Just ensure the last user message has the right text prompt.
     if msg_in.image_data and llm_messages:
-        chosen_model = "llama-3.2-11b-vision-preview"
         prompt_text = msg_in.content or "Please perform OCR: read and transcribe all text from this image and analyze its visual content."
-        llm_messages[-1] = {
-            "role": "user",
-            "content": [
-                {"type": "text", "text": prompt_text},
-                {"type": "image_url", "image_url": {"url": msg_in.image_data}}
-            ]
-        }
+        # Keep as plain text — image_data is passed separately to the router
+        llm_messages[-1] = {"role": "user", "content": prompt_text}
 
     # 4. Stream response generator and save assistant message upon completion
     async def sse_event_generator():
@@ -312,7 +368,8 @@ async def _handle_message_stream(
         async for chunk in hosted_llm.stream_chat_completion(
             messages=llm_messages,
             model=chosen_model,
-            temperature=current_user.temperature or 0.7
+            temperature=current_user.temperature or 0.7,
+            image_data=msg_in.image_data or None
         ):
             full_content.append(chunk)
             # Send text delta

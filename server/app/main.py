@@ -14,6 +14,7 @@ from server.app.db.session import engine, Base
 from server.app.api.auth import router as auth_router
 from server.app.api.chat import router as chat_router
 from server.app.api.documents import router as doc_router
+from server.app.api.voice import router as voice_router
 
 # Auto-create tables (SQLite or PostgreSQL)
 Base.metadata.create_all(bind=engine)
@@ -37,6 +38,7 @@ app.add_middleware(
 app.include_router(auth_router, prefix=settings.API_V1_STR)
 app.include_router(chat_router, prefix=settings.API_V1_STR)
 app.include_router(doc_router, prefix=settings.API_V1_STR)
+app.include_router(voice_router, prefix=settings.API_V1_STR)
 
 
 @app.get("/health")

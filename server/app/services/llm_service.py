@@ -1,40 +1,171 @@
 """
-Hosted LLM Inference Service via Groq & Free Multimodal Models:
-- Fast streaming via GPT OSS 20B / 120B and Qwen3.8 27B (models confirmed on user's Groq key).
-- Vision / OCR via GPT OSS 120B (multimodal, used when image_data is provided).
-- Free High-Resolution Image Generation:
-    Primary:   Google Gemini 2.0 Flash (1500 images/day free, photorealistic)
-    Secondary: Hugging Face FLUX.1-schnell (state-of-the-art quality, free HF token required)
-    Fallback:  Pollinations Turbo (no key needed, unlimited but lower quality)
-- Seamless fallback simulation if Groq API key is not yet set.
+Intelligent Multi-Model Router — LEARN.GPT Platform
+====================================================
+Primary Engine  : Google Gemini (gemini-2.0-flash / gemini-2.5-flash-lite)
+Vision / OCR    : Gemini multimodal (inline image_data)
+Image Gen       : Gemini image model → HuggingFace FLUX → Pollinations (free fallback chain)
+Groq Fallback   : qwen/qwen3.8-27b via AsyncGroq — auto-activates on Gemini 429
+Auto-Recovery   : QuotaCircuitBreaker resets when Gemini quota window expires
+
+Intent routing (no manual model selection needed):
+  IMAGE_GEN     → /image, draw, generate image, create an image, paint, illustrate …
+  OCR_VISION    → image_data attached OR read/extract/describe/ocr keywords
+  DIAGRAM       → diagram, flowchart, visualize, show how X works → text + inline image
+  TEXT (default)→ Gemini streaming → Groq fallback on 429
 """
-from typing import AsyncGenerator, List, Dict, Any, Optional, Tuple
-import os
-import json
+
+from __future__ import annotations
+
 import asyncio
-import urllib.parse
-import random
 import base64
+import json
+import os
+import random
+import re
+import time
+import urllib.parse
+from typing import AsyncGenerator, Dict, Any, List, Optional, Tuple
+
 import aiohttp
 from groq import AsyncGroq
+
 from server.app.core.config import settings
 
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+GEMINI_TEXT_MODELS = ["gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.8-flash"]
+GEMINI_IMAGE_MODELS = ["gemini-2.5-flash-image", "gemini-3.1-flash-image"]
+GROQ_FALLBACK_MODEL = "qwen/qwen3.8-27b"
+
+IMAGE_GEN_TRIGGERS = (
+    "/image", "generate image", "draw ", "create an image", "generate an image",
+    "paint ", "illustrate ", "make an image", "make image", "show image of",
+    "picture of", "photo of"
+)
+OCR_TRIGGERS = (
+    "read this image", "extract text", "what does this image say", "ocr",
+    "transcribe this", "read the image", "describe this image", "what is in the image",
+    "what's in the image", "analyze this image", "read image", "scan this"
+)
+DIAGRAM_TRIGGERS = (
+    "diagram", "flowchart", "visualize", "show how", "architecture diagram",
+    "draw a diagram", "create a diagram", "make a diagram"
+)
+
 
 # ---------------------------------------------------------------------------
-# Google Gemini Flash Image Generation
+# Quota Circuit Breaker  (in-memory; resets on process restart)
 # ---------------------------------------------------------------------------
+
+class QuotaCircuitBreaker:
+    def __init__(self):
+        self._blocked_until: Optional[float] = None  # epoch seconds
+
+    def gemini_available(self) -> bool:
+        if self._blocked_until is None:
+            return True
+        if time.time() >= self._blocked_until:
+            self._blocked_until = None   # auto-recover
+            return True
+        return False
+
+    def report_429(self, retry_after_seconds: int = 60):
+        self._blocked_until = time.time() + retry_after_seconds
+
+    @property
+    def seconds_remaining(self) -> int:
+        if self._blocked_until is None:
+            return 0
+        remaining = self._blocked_until - time.time()
+        return max(0, int(remaining))
+
+
+# ---------------------------------------------------------------------------
+# Intent Detection
+# ---------------------------------------------------------------------------
+
+def _detect_intent(messages: List[Dict[str, Any]], has_image_data: bool = False) -> str:
+    """Returns one of: IMAGE_GEN | OCR_VISION | DIAGRAM | TEXT"""
+    if has_image_data:
+        return "OCR_VISION"
+
+    last_content = ""
+    for m in reversed(messages):
+        content = m.get("content", "")
+        if isinstance(content, str):
+            last_content = content
+            break
+        elif isinstance(content, list):
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "text":
+                    last_content = part.get("text", "")
+                    break
+            break
+
+    lower = last_content.lower().strip()
+
+    # Check image generation first (highest priority keyword match)
+    if any(lower.startswith(t) or t.strip() in lower for t in IMAGE_GEN_TRIGGERS):
+        return "IMAGE_GEN"
+
+    # OCR / vision keywords
+    if any(t in lower for t in OCR_TRIGGERS):
+        return "OCR_VISION"
+
+    # Diagram request
+    if any(t in lower for t in DIAGRAM_TRIGGERS):
+        return "DIAGRAM"
+
+    return "TEXT"
+
+
+def _extract_image_prompt(text: str) -> str:
+    """Strip command prefix, return clean prompt text."""
+    lower = text.lower()
+    prefixes = [
+        "/image", "generate image of", "generate image",
+        "draw a picture of", "draw a ", "draw ",
+        "create an image of", "create an image",
+        "generate an image of", "generate an image",
+        "paint a picture of", "paint a ", "paint ",
+        "illustrate ", "make an image of", "make an image",
+        "make image of", "make image", "show image of",
+        "picture of", "photo of"
+    ]
+    for prefix in prefixes:
+        if lower.startswith(prefix):
+            return text[len(prefix):].strip()
+    return text.strip()
+
+
+def _extract_retry_seconds(error: Exception) -> int:
+    """Parse retry-after seconds from Gemini 429 error message."""
+    msg = str(error)
+    # Look for retryDelay patterns like "retryDelay":"30s" or "retry_after: 60"
+    match = re.search(r'retryDelay["\s:]+(\d+)', msg)
+    if match:
+        return int(match.group(1))
+    match = re.search(r'retry.after["\s:]+(\d+)', msg, re.IGNORECASE)
+    if match:
+        return int(match.group(1))
+    return 60  # safe default
+
+
+# ---------------------------------------------------------------------------
+# Image Generation Helpers
+# ---------------------------------------------------------------------------
+
 async def _generate_gemini_image(prompt: str, gemini_api_key: str) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Calls Gemini image generation models (gemini-2.5-flash-image, gemini-3.1-flash-image).
-    Returns (data_uri, error_reason).
-    """
+    """Try Gemini image generation models. Returns (data_uri, error_reason)."""
     try:
         from google import genai
         from google.genai import types
+
         client = genai.Client(api_key=gemini_api_key)
-        image_models = ["gemini-2.5-flash-image", "gemini-3.1-flash-image"]
-        last_err = ""
-        for model_name in image_models:
+
+        for model_name in GEMINI_IMAGE_MODELS:
             try:
                 response = await asyncio.get_event_loop().run_in_executor(
                     None,
@@ -52,199 +183,473 @@ async def _generate_gemini_image(prompt: str, gemini_api_key: str) -> Tuple[Opti
                         mime = part.inline_data.mime_type or "image/png"
                         return f"data:{mime};base64,{b64}", None
             except Exception as model_err:
-                last_err = str(model_err)
-                if "limit: 0" in last_err or "429" in last_err:
-                    return None, "Google AI Studio Free Tier has image generation quota set to 0 (requires linked Google Cloud billing profile)."
+                err_str = str(model_err)
+                if "limit: 0" in err_str or "quota" in err_str.lower():
+                    return None, "Gemini image quota = 0 on this free tier (requires linked billing profile)."
+                if "429" in err_str:
+                    return None, f"Gemini image rate-limited: {err_str}"
                 continue
-        return None, last_err or "Gemini image model is not accessible with current project tier."
+
+        return None, "No Gemini image model returned an image part."
     except Exception as e:
         return None, str(e)
 
 
-# ---------------------------------------------------------------------------
-# HuggingFace FLUX.1-schnell — secondary free image generation
-# ---------------------------------------------------------------------------
 HF_IMAGE_API = "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell"
 
 
 async def _generate_hf_image(prompt: str, hf_token: str) -> Optional[str]:
-    """
-    Calls HuggingFace Inference API for FLUX.1-schnell.
-    Returns a base64 data-URI string on success, or None on failure.
-    FLUX.1-schnell needs only 4 inference steps and produces photorealistic results.
-    """
+    """HuggingFace FLUX.1-schnell — secondary free generator."""
     headers = {"Authorization": f"Bearer {hf_token}"}
-    payload = {
-        "inputs": prompt,
-        "parameters": {"num_inference_steps": 4}
-    }
+    payload = {"inputs": prompt, "parameters": {"num_inference_steps": 4}}
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                HF_IMAGE_API, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=60)
+                HF_IMAGE_API, json=payload, headers=headers,
+                timeout=aiohttp.ClientTimeout(total=60)
             ) as resp:
                 if resp.status == 200:
                     image_bytes = await resp.read()
                     b64 = base64.b64encode(image_bytes).decode("utf-8")
                     return f"data:image/jpeg;base64,{b64}"
-                # 503 = model loading, surface a clear message rather than silent fallback
-                body = await resp.text()
                 return None
     except Exception:
         return None
 
 
-class HostedLLMService:
+def _pollinations_url(prompt: str) -> str:
+    """Build a Pollinations high-res image URL with prompt enhancement."""
+    enhanced = prompt
+    if not any(k in enhanced.lower() for k in ["photorealistic", "8k", "cinematic", "masterpiece", "detailed"]):
+        enhanced = f"{prompt}, highly detailed, photorealistic, cinematic lighting, 8k resolution, sharp focus, masterpiece"
+    seed = random.randint(10000, 999999)
+    encoded = urllib.parse.quote(enhanced)
+    return f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&seed={seed}&nologo=true"
+
+
+# ---------------------------------------------------------------------------
+# Gemini Message Format Converter
+# ---------------------------------------------------------------------------
+
+def _to_gemini_contents(messages: List[Dict[str, Any]]) -> Tuple[str, List[Dict]]:
+    """
+    Convert OpenAI-style messages → (system_instruction, gemini_contents).
+    Roles: 'assistant' → 'model'. System messages extracted as instruction.
+    """
+    system_instruction = ""
+    contents = []
+
+    for msg in messages:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+
+        if role == "system":
+            if isinstance(content, str):
+                system_instruction = content
+            continue
+
+        gemini_role = "model" if role == "assistant" else "user"
+
+        if isinstance(content, str):
+            contents.append({"role": gemini_role, "parts": [{"text": content}]})
+        elif isinstance(content, list):
+            # Multimodal content list (text + image_url parts)
+            parts = []
+            for part in content:
+                if part.get("type") == "text":
+                    parts.append({"text": part.get("text", "")})
+                elif part.get("type") == "image_url":
+                    url = part.get("image_url", {}).get("url", "")
+                    if url.startswith("data:"):
+                        # Parse data URI
+                        header, b64data = url.split(",", 1)
+                        mime = header.split(":")[1].split(";")[0]
+                        image_bytes = base64.b64decode(b64data)
+                        parts.append({
+                            "inline_data": {"mime_type": mime, "data": image_bytes}
+                        })
+            if parts:
+                contents.append({"role": gemini_role, "parts": parts})
+
+    return system_instruction, contents
+
+
+# ---------------------------------------------------------------------------
+# Main Intelligent Router
+# ---------------------------------------------------------------------------
+
+class IntelligentRouter:
+    """
+    Single entry point for all LLM operations.
+    Automatically routes to the right model/mode based on intent.
+    """
+
     def __init__(self):
-        self.api_key = settings.GROQ_API_KEY or os.getenv("GROQ_API_KEY", "")
-        self.client = AsyncGroq(api_key=self.api_key) if self.api_key else None
+        self.gemini_api_key = settings.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY", "")
+        self.groq_api_key = settings.GROQ_API_KEY or os.getenv("GROQ_API_KEY", "")
+        self.hf_token = getattr(settings, "HF_TOKEN", "") or os.getenv("HF_TOKEN", "")
+
+        # Gemini client (lazy-init per request to avoid startup errors)
+        self._gemini_client = None
+
+        # Groq fallback client
+        self.groq_client = AsyncGroq(api_key=self.groq_api_key) if self.groq_api_key else None
+
+        # Circuit breaker — tracks Gemini 429 windows
+        self.circuit_breaker = QuotaCircuitBreaker()
+
+    def _get_gemini_client(self):
+        if self._gemini_client is None and self.gemini_api_key:
+            from google import genai
+            self._gemini_client = genai.Client(api_key=self.gemini_api_key)
+        return self._gemini_client
 
     def is_configured(self) -> bool:
-        return bool(self.api_key)
+        return bool(self.gemini_api_key or self.groq_api_key)
+
+    # ------------------------------------------------------------------
+    # Public API — same signature as old HostedLLMService
+    # ------------------------------------------------------------------
 
     async def stream_chat_completion(
         self,
         messages: List[Dict[str, Any]],
         model: Optional[str] = None,
         temperature: float = 0.7,
-        max_tokens: int = 1024,
+        max_tokens: int = 2048,
+        image_data: Optional[str] = None,   # base64 data URI from frontend
     ) -> AsyncGenerator[str, None]:
         """
-        Yields tokens in real-time as Server-Sent Events (SSE) chunks.
+        Yields text chunks (SSE deltas) for the entire response.
+        Routes automatically based on intent; never needs manual model selection.
         """
-        chosen_model = model or settings.DEFAULT_MODEL
+        has_image = bool(image_data)
+        intent = _detect_intent(messages, has_image_data=has_image)
 
-        # -------------------------------------------------------------
-        # 1. FREE IMAGE GENERATION (Flux.1 / Pollinations AI)
-        # -------------------------------------------------------------
-        last_user_content = ""
-        if messages:
-            last_msg = messages[-1].get("content")
-            if isinstance(last_msg, str):
-                last_user_content = last_msg
-            elif isinstance(last_msg, list):
-                for part in last_msg:
-                    if isinstance(part, dict) and part.get("type") == "text":
-                        last_user_content = part.get("text", "")
+        # ---- Manual override: user explicitly picked image-gen model ----
+        if model == "flux-image-gen":
+            intent = "IMAGE_GEN"
 
-        is_image_gen_model = chosen_model == "flux-image-gen"
-        is_image_gen_intent = last_user_content.strip().lower().startswith(("/image", "generate image", "draw ", "create an image", "generate an image"))
+        # ---- Route ----
+        if intent == "IMAGE_GEN":
+            async for chunk in self._handle_image_gen(messages):
+                yield chunk
 
-        if is_image_gen_model or is_image_gen_intent:
-            prompt_clean = last_user_content
-            for prefix in ["/image", "generate image of", "generate image", "draw", "create an image of", "create an image", "generate an image of", "generate an image"]:
-                if prompt_clean.lower().startswith(prefix):
-                    prompt_clean = prompt_clean[len(prefix):].strip()
+        elif intent == "OCR_VISION":
+            async for chunk in self._handle_vision(messages, image_data):
+                yield chunk
+
+        elif intent == "DIAGRAM":
+            async for chunk in self._handle_diagram(messages, temperature):
+                yield chunk
+
+        else:  # TEXT
+            async for chunk in self._handle_text(messages, temperature, max_tokens):
+                yield chunk
+
+    # ------------------------------------------------------------------
+    # TEXT — Gemini primary, Groq fallback
+    # ------------------------------------------------------------------
+
+    async def _handle_text(
+        self,
+        messages: List[Dict[str, Any]],
+        temperature: float,
+        max_tokens: int
+    ) -> AsyncGenerator[str, None]:
+        # Show routing indicator on first chunk
+        if self.circuit_breaker.gemini_available() and self.gemini_api_key:
+            async for chunk in self._stream_gemini_text(messages, temperature, max_tokens):
+                yield chunk
+        else:
+            # Gemini blocked → Groq
+            remaining = self.circuit_breaker.seconds_remaining
+            if remaining > 0:
+                yield f"*[Auto-switched to Groq Qwen fallback — Gemini quota resets in ~{remaining}s]*\n\n"
+            async for chunk in self._stream_groq_text(messages, temperature, max_tokens):
+                yield chunk
+
+    async def _stream_gemini_text(
+        self,
+        messages: List[Dict[str, Any]],
+        temperature: float,
+        max_tokens: int
+    ) -> AsyncGenerator[str, None]:
+        try:
+            from google import genai
+            from google.genai import types
+
+            client = self._get_gemini_client()
+            if not client:
+                raise RuntimeError("No Gemini API key configured.")
+
+            system_instruction, contents = _to_gemini_contents(messages)
+
+            # Try each text model in order
+            last_error = None
+            for model_name in GEMINI_TEXT_MODELS:
+                try:
+                    response = await asyncio.get_event_loop().run_in_executor(
+                        None,
+                        lambda m=model_name: client.models.generate_content_stream(
+                            model=m,
+                            contents=contents,
+                            config=types.GenerateContentConfig(
+                                system_instruction=system_instruction or None,
+                                temperature=temperature,
+                                max_output_tokens=max_tokens,
+                            )
+                        )
+                    )
+
+                    # Stream chunks from the response iterator
+                    for chunk in response:
+                        if chunk.text:
+                            yield chunk.text
+                    return  # Success
+
+                except Exception as model_err:
+                    err_str = str(model_err)
+                    if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                        retry_secs = _extract_retry_seconds(model_err)
+                        self.circuit_breaker.report_429(retry_secs)
+                        last_error = model_err
+                        break  # Fall through to Groq
+                    elif "503" in err_str or "overloaded" in err_str.lower():
+                        last_error = model_err
+                        continue  # Try next model
+                    else:
+                        last_error = model_err
+                        continue
+
+            # Fall through to Groq
+            if self.circuit_breaker.seconds_remaining > 0:
+                remaining = self.circuit_breaker.seconds_remaining
+                yield f"*[Auto-switched to Groq Qwen — Gemini quota resets in ~{remaining}s]*\n\n"
+            elif last_error:
+                yield f"*[Gemini unavailable ({type(last_error).__name__}) — switching to Groq Qwen]*\n\n"
+
+            async for chunk in self._stream_groq_text(messages, temperature, max_tokens):
+                yield chunk
+
+        except Exception as e:
+            yield f"\n\n[Router Error]: {str(e)}\n"
+
+    async def _stream_groq_text(
+        self,
+        messages: List[Dict[str, Any]],
+        temperature: float,
+        max_tokens: int
+    ) -> AsyncGenerator[str, None]:
+        if not self.groq_client:
+            yield "⚠️ No Groq API key configured. Please add GROQ_API_KEY to .env as a fallback.\n"
+            return
+
+        try:
+            response = await self.groq_client.chat.completions.create(
+                model=GROQ_FALLBACK_MODEL,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stream=True,
+            )
+            async for chunk in response:
+                content = chunk.choices[0].delta.content
+                if content:
+                    yield content
+        except Exception as e:
+            yield f"\n\n[Groq Fallback Error]: {str(e)}\n"
+
+    # ------------------------------------------------------------------
+    # OCR / VISION — Gemini multimodal
+    # ------------------------------------------------------------------
+
+    async def _handle_vision(
+        self,
+        messages: List[Dict[str, Any]],
+        image_data: Optional[str]
+    ) -> AsyncGenerator[str, None]:
+        try:
+            from google import genai
+            from google.genai import types
+
+            client = self._get_gemini_client()
+            if not client:
+                # Fall back to Groq vision if available
+                async for chunk in self._stream_groq_vision(messages):
+                    yield chunk
+                return
+
+            # Extract the user's text prompt
+            user_text = "Please read and analyze this image. Extract all text (OCR) and describe the visual content."
+            for m in reversed(messages):
+                if m.get("role") == "user":
+                    content = m.get("content", "")
+                    if isinstance(content, str) and content.strip():
+                        user_text = content
                     break
 
-            if not prompt_clean.strip():
-                prompt_clean = "A photorealistic futuristic laboratory with holographic AI interfaces"
+            # Build multimodal parts
+            parts = [{"text": user_text}]
 
-            gemini_api_key = settings.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY", "")
-            hf_token = settings.HF_TOKEN or os.getenv("HF_TOKEN", "")
+            if image_data and image_data.startswith("data:"):
+                header, b64data = image_data.split(",", 1)
+                mime = header.split(":")[1].split(";")[0]
+                image_bytes = base64.b64decode(b64data)
+                parts.append({
+                    "inline_data": {"mime_type": mime, "data": image_bytes}
+                })
 
-            if gemini_api_key:
-                # ---- Primary: Google Gemini Flash ----
-                yield "🎨 **Generating AI image with Gemini Flash...**\n\n"
-                await asyncio.sleep(0.2)
-                data_uri, err_reason = await _generate_gemini_image(prompt_clean, gemini_api_key)
-                if data_uri:
-                    yield f"### 🖼️ Prompt: *\"{prompt_clean}\"*\n\n"
-                    yield f"![{prompt_clean}]({data_uri})\n\n"
-                    yield f"> **Model:** Gemini Flash Image Generation (Google)\n"
-                    yield f"> **Quality:** Photorealistic · Daily User Quota: 10 images/day\n"
-                    return
-                else:
-                    yield f"ℹ️ *Notice: {err_reason}*\n\n"
-                    yield "🎨 **Switching to High-Resolution Enhanced Photorealistic Engine...**\n\n"
-                    await asyncio.sleep(0.3)
+            # System instruction from messages
+            system_instruction = ""
+            for m in messages:
+                if m.get("role") == "system":
+                    system_instruction = m.get("content", "")
+                    break
 
-            if hf_token:
-                # ---- Secondary: HuggingFace FLUX.1-schnell ----
-                yield "🎨 **Generating high-resolution AI image with FLUX.1-schnell (HuggingFace)...**\n\n"
-                await asyncio.sleep(0.2)
-                data_uri = await _generate_hf_image(prompt_clean, hf_token)
-                if data_uri:
-                    yield f"### 🖼️ Prompt: *\"{prompt_clean}\"*\n\n"
-                    yield f"![{prompt_clean}]({data_uri})\n\n"
-                    yield f"> **Model:** FLUX.1-schnell (Black Forest Labs via HuggingFace)\n"
-                    yield f"> **Quality:** State-of-the-art, 4-step ultra-fast diffusion\n"
-                    return
-                else:
-                    yield "⚠️ FLUX.1-schnell is warming up — falling back to Enhanced Engine...\n\n"
-                    await asyncio.sleep(0.3)
-
-            # ---- Photorealistic Prompt Enhancement & High-Res Engine ----
-            enhanced_prompt = prompt_clean
-            if not any(k in enhanced_prompt.lower() for k in ["photorealistic", "8k", "cinematic", "masterpiece", "detailed"]):
-                enhanced_prompt = f"{prompt_clean}, highly detailed, photorealistic, cinematic lighting, 8k resolution, sharp focus, masterpiece"
-
-            seed = random.randint(10000, 999999)
-            encoded_prompt = urllib.parse.quote(enhanced_prompt)
-            # 1024x1024 high resolution with enhanced prompt
-            image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&seed={seed}&nologo=true"
-
-            yield f"### 🖼️ Prompt: *\"{prompt_clean}\"*\n\n"
-            yield f"![{prompt_clean}]({image_url})\n\n"
-            yield f"> **Model:** High-Resolution Photorealistic AI Engine (1024×1024)\n"
-            yield f"> **Quality:** 8K Cinematic Photorealism\n"
-            yield f"> **Quota:** 1 of 10 daily image generations used\n\n"
-            yield f"[📥 Download Full-Res Image]({image_url})\n"
-            return
-
-        # -------------------------------------------------------------
-        # 2. FREE IMAGE READING / OCR (Groq Vision via GPT OSS 120B)
-        # -------------------------------------------------------------
-        is_vision_request = (
-            chosen_model in ("llama-3.2-11b-vision-preview", "openai/gpt-oss-120b-vision") or
-            any(isinstance(m.get("content"), list) for m in messages)
-        )
-
-        if is_vision_request and not self.client:
-            # Mock OCR demonstration if Groq key isn't provided yet
-            yield "### 🔍 Image Reading & OCR Analysis (Llama 3.2 11B Vision)\n\n"
-            yield "**Document / Image Processing Summary:**\n"
-            yield "- **Mode:** Multimodal Vision & Text Extraction\n"
-            yield "- **Detected Content:** Scanned text, layout blocks, and graphical structures\n\n"
-            yield "```text\n[OCR Transcribed Text]:\nPROJECT SPECIFICATION & ARCHITECTURE\nStatus: Verified\nPlatform: Next.js + FastAPI + Groq Cloud\n```\n\n"
-            yield "💡 *Tip: Add your free `GROQ_API_KEY` in `.env` to enable live Groq LPU Vision inference on any image!*"
-            return
-
-        # -------------------------------------------------------------
-        # 3. LIVE GROQ INFERENCE (Text & Vision)
-        # -------------------------------------------------------------
-        if self.client:
-            try:
-                # For vision/OCR requests use GPT OSS 120B (confirmed on user's key; supports multimodal content)
-                # For regular text chat, use whichever model the frontend sent
-                vision_model = "openai/gpt-oss-120b" if is_vision_request else chosen_model
-                response = await self.client.chat.completions.create(
-                    model=vision_model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    stream=True,
+            response = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: client.models.generate_content_stream(
+                    model="gemini-3.5-flash",
+                    contents=[{"parts": parts}],
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_instruction or None,
+                        temperature=0.3,
+                        max_output_tokens=2048,
+                    )
                 )
-                async for chunk in response:
-                    content = chunk.choices[0].delta.content
-                    if content:
-                        yield content
+            )
+
+            for chunk in response:
+                if chunk.text:
+                    yield chunk.text
+
+        except Exception as e:
+            err_str = str(e)
+            if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                retry_secs = _extract_retry_seconds(e)
+                self.circuit_breaker.report_429(retry_secs)
+                yield "*[Gemini vision quota hit — trying Groq vision fallback]*\n\n"
+                async for chunk in self._stream_groq_vision(messages):
+                    yield chunk
+            else:
+                yield f"\n\n[Vision Error]: {err_str}\n"
+
+    async def _stream_groq_vision(self, messages: List[Dict[str, Any]]) -> AsyncGenerator[str, None]:
+        """Groq vision fallback using openai/gpt-oss-120b."""
+        if not self.groq_client:
+            yield "⚠️ No Groq API key configured for vision fallback.\n"
+            return
+        try:
+            response = await self.groq_client.chat.completions.create(
+                model="openai/gpt-oss-120b",
+                messages=messages,
+                temperature=0.3,
+                max_tokens=2048,
+                stream=True,
+            )
+            async for chunk in response:
+                content = chunk.choices[0].delta.content
+                if content:
+                    yield content
+        except Exception as e:
+            yield f"\n\n[Groq Vision Error]: {str(e)}\n"
+
+    # ------------------------------------------------------------------
+    # IMAGE GENERATION — Gemini → HF FLUX → Pollinations
+    # ------------------------------------------------------------------
+
+    async def _handle_image_gen(self, messages: List[Dict[str, Any]]) -> AsyncGenerator[str, None]:
+        # Extract the prompt text
+        raw_prompt = ""
+        for m in reversed(messages):
+            if m.get("role") == "user":
+                content = m.get("content", "")
+                if isinstance(content, str):
+                    raw_prompt = content
+                elif isinstance(content, list):
+                    for part in content:
+                        if isinstance(part, dict) and part.get("type") == "text":
+                            raw_prompt = part.get("text", "")
+                break
+
+        prompt = _extract_image_prompt(raw_prompt)
+        if not prompt:
+            prompt = "A futuristic AI laboratory with holographic interfaces, photorealistic, 8K"
+
+        # ---- Try Gemini image ----
+        if self.gemini_api_key:
+            yield "🎨 **Generating AI image with Gemini Flash...**\n\n"
+            await asyncio.sleep(0.1)
+            data_uri, err = await _generate_gemini_image(prompt, self.gemini_api_key)
+            if data_uri:
+                yield f"### 🖼️ Prompt: *\"{prompt}\"*\n\n"
+                yield f"![{prompt}]({data_uri})\n\n"
+                yield f"> **Model:** Gemini Flash Image Generation (Google)\n"
+                yield f"> **Quality:** Photorealistic · Daily User Quota: 10 images/day\n"
                 return
-            except Exception as e:
-                yield f"\n\n[Groq API Notification]: {str(e)}\n"
+            else:
+                yield f"⚠️ *Gemini image: {err}*\n\n"
 
-        # -------------------------------------------------------------
-        # 4. FALLBACK TEXT SIMULATION (When GROQ_API_KEY is not set)
-        # -------------------------------------------------------------
-        mock_response = (
-            f"Hello! I am LEARN.GPT running in local developer simulation mode ({chosen_model}). "
-            "Notice: You have NOT configured a GROQ_API_KEY in your .env file, so this is a local simulated response. "
-            "No external Groq account or key was created for you. "
-            "To connect real live Groq cloud inference, paste your own key into .env whenever you are ready."
-        )
-        for word in mock_response.split(" "):
-            yield word + " "
-            await asyncio.sleep(0.04)
+        # ---- Try HuggingFace FLUX.1-schnell ----
+        if self.hf_token:
+            yield "🎨 **Generating AI image with FLUX.1-schnell (HuggingFace)...**\n\n"
+            await asyncio.sleep(0.1)
+            data_uri = await _generate_hf_image(prompt, self.hf_token)
+            if data_uri:
+                yield f"### 🖼️ Prompt: *\"{prompt}\"*\n\n"
+                yield f"![{prompt}]({data_uri})\n\n"
+                yield f"> **Model:** FLUX.1-schnell (Black Forest Labs via HuggingFace)\n"
+                yield f"> **Quality:** State-of-the-art 4-step ultra-fast diffusion\n"
+                return
+            else:
+                yield "⚠️ FLUX model is loading — falling back to Pollinations...\n\n"
+
+        # ---- Pollinations (always available, no key) ----
+        image_url = _pollinations_url(prompt)
+        yield f"🎨 **Generating AI image with Pollinations (Free Hosted Model)...**\n\n"
+        yield f"### 🖼️ Prompt: *\"{prompt}\"*\n\n"
+        yield f"![{prompt}]({image_url})\n\n"
+        yield f"> **Model:** SDXL-Turbo / Pollinations (1024×1024)\n"
+        yield f"> **Status:** Free & Unlimited (Zero API Key Required)\n"
+        yield f"\n[📥 Download Full-Res Image]({image_url})\n"
+        if not self.gemini_api_key:
+            yield "\n💡 Add a free `GEMINI_API_KEY` in `.env` to use Gemini for much better quality! (~1500 images/day free)\n"
+
+    # ------------------------------------------------------------------
+    # DIAGRAM — text explanation + inline diagram image
+    # ------------------------------------------------------------------
+
+    async def _handle_diagram(
+        self,
+        messages: List[Dict[str, Any]],
+        temperature: float
+    ) -> AsyncGenerator[str, None]:
+        """Stream text explanation, then optionally append a diagram image."""
+
+        # First stream the textual explanation
+        async for chunk in self._handle_text(messages, temperature, 2048):
+            yield chunk
+
+        # Then attempt to generate a visual diagram
+        raw_prompt = ""
+        for m in reversed(messages):
+            if m.get("role") == "user":
+                content = m.get("content", "")
+                if isinstance(content, str):
+                    raw_prompt = content
+                break
+
+        if raw_prompt:
+            yield "\n\n---\n*📊 Generating visual diagram...*\n\n"
+            diagram_prompt = f"Clean technical diagram, flowchart, or architecture illustration of: {raw_prompt}. White background, labeled nodes, professional style."
+            image_url = _pollinations_url(diagram_prompt)
+            yield f"![Diagram: {raw_prompt[:60]}]({image_url})\n"
 
 
-hosted_llm = HostedLLMService()
+# ---------------------------------------------------------------------------
+# Singleton instance — imported by chat.py as `hosted_llm`
+# ---------------------------------------------------------------------------
+hosted_llm = IntelligentRouter()
+# Also export under new name for clarity
+router = hosted_llm

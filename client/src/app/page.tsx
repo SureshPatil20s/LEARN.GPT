@@ -168,6 +168,7 @@ export default function Home() {
   // Send Message & Stream
   const handleSendMessage = async (content: string, attachedFile?: File, imageDataUrl?: string) => {
     if (!content.trim() && !attachedFile && !imageDataUrl) return;
+    if (isStreaming) return; // Prevent concurrent requests collisions
 
     let convId = activeConversationId;
 
@@ -186,10 +187,12 @@ export default function Home() {
     }
 
     // If file was attached (and not an image), upload to RAG document index
+    let attachedName: string | undefined = undefined;
     const isImageFile = attachedFile && attachedFile.name.match(/\.(png|jpg|jpeg|webp)$/i);
     if (attachedFile && !isImageFile) {
       try {
         await handleUploadDocument(attachedFile);
+        attachedName = attachedFile.name;
       } catch (err: any) {
         alert(`Failed to index file: ${err.message}`);
       }
@@ -198,6 +201,8 @@ export default function Home() {
     // Add user message optimistically
     const displayContent = imageDataUrl
       ? `![Attached Image](${imageDataUrl})\n\n${content || 'Please extract all text (OCR) from this image and summarize its content.'}`
+      : attachedName
+      ? `📄 **[Attached Document: ${attachedName}]**\n\n${content || 'Please explain the contents of this document.'}`
       : content;
 
     const userMsg: Message = {
@@ -222,6 +227,7 @@ export default function Home() {
       model: selectedModel,
       useRag,
       imageData: imageDataUrl,
+      attachedFilename: attachedName,
       onChunk: (chunk) => {
         setStreamingContent((prev) => prev + chunk);
       },
@@ -244,6 +250,12 @@ export default function Home() {
         setStreamingContent('');
         setStreamingSources([]);
         refreshConversations();
+        // Sync messages from DB to guarantee correct chronological order and deduplication
+        if (convId) {
+          getConversation(convId)
+            .then(({ messages: synced }) => setMessages(synced))
+            .catch(() => {});
+        }
       },
       onError: (err) => {
         console.error('Streaming error:', err);

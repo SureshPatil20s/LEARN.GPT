@@ -65,7 +65,7 @@ export default function Navbar({
           {/* Model dropdown menu */}
           <div className="absolute left-0 mt-1 w-64 bg-[#1a1a1a] border border-zinc-800 rounded-xl shadow-2xl py-1 hidden group-hover:block z-50">
             <div className="px-3 py-1.5 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
-              Hosted Inference (Groq)
+              Autonomous Router (Gemini + Groq)
             </div>
             {models.map((model) => (
               <button

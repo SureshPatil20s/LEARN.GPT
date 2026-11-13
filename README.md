@@ -74,6 +74,19 @@ GOOGLE_CLIENT_ID=your_client_id_here.apps.googleusercontent.com
 NEXT_PUBLIC_GOOGLE_CLIENT_ID=your_client_id_here.apps.googleusercontent.com
 ```
 
+---
+
+## 🎙️ Speech-to-Text Voice Subsystem (SDE-4 Pipeline)
+
+Integrated directly from the [`Rishikeshn2007/SDE-4`](https://github.com/Rishikeshn2007/SDE-4/tree/suresh) (`suresh` branch) voice pipeline:
+
+- **Audio Chunking (`academia_audio.chunker`):** Slices incoming microphone PCM audio into deterministic 200ms `AudioChunk` objects with monotonic sequence IDs and timestamps.
+- **Audio Preprocessor (`sde4_stt.preprocessing`):** Sinc-FIR low-pass downsampling and RMS gain normalization.
+- **Voice Activity Detection (`sde4_stt.vad`):** Energy-based speech vs. silence classification.
+- **Transcription Orchestrator (`sde4_stt.orchestrator`):** Wires chunks → preprocessing → `RealSpeechTranscriber` (Google Web Speech API, 100% free with no API keys required) → deduplication & interim reconciliation.
+- **Web UI Mic Button:** Click the 🎙️ button in the chat box to dictate questions directly into LEARN.GPT.
+- **Test Suite:** Run `python test_voice_pipeline.py` to verify all components.
+
 > When configured, the "Continue with Google" button opens a real Google account picker — any Google account works, not just one specific person. The backend verifies the credential JWT cryptographically.
 
 > Without it, the Google button shows a setup notice and email/password login still works normally.

@@ -65,6 +65,7 @@ class MessageCreate(BaseModel):
     model: Optional[str] = None
     use_rag: Optional[bool] = True
     image_data: Optional[str] = None
+    attached_filename: Optional[str] = None
 
 
 class MessageResponse(BaseModel):

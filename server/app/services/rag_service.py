@@ -257,7 +257,18 @@ class RAGService:
 
         # Sort by final hybrid score descending
         scored_candidates.sort(key=lambda x: x[0], reverse=True)
-        top_matches = scored_candidates[:top_k]
+
+        # Only retain chunks with meaningful relevance (>= 35% display similarity)
+        # This prevents casual/general queries ("Hi", "Hello", "How are you", "write python code")
+        # from being cluttered with irrelevant course PDFs.
+        filtered_candidates = [
+            cand for cand in scored_candidates
+            if (min(1.0, max(cand[1], cand[0] * 0.9)) >= 0.35)
+        ]
+
+        top_matches = filtered_candidates[:top_k]
+        if not top_matches:
+            return "", []
 
         # 5. Format Context Blocks and Citations
         context_blocks = []

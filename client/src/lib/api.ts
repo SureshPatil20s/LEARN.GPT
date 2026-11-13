@@ -148,7 +148,7 @@ export async function getConversations(): Promise<Conversation[]> {
   }
 }
 
-export async function createConversation(title = 'New Chat', model = 'openai/gpt-oss-20b'): Promise<Conversation> {
+export async function createConversation(title = 'New Chat', model = 'auto'): Promise<Conversation> {
   return request<Conversation>('/conversations', {
     method: 'POST',
     body: JSON.stringify({ title, model }),
@@ -217,12 +217,57 @@ export async function deleteDocument(id: string): Promise<void> {
   await request<void>(`/documents/${id}`, { method: 'DELETE' });
 }
 
+// Voice / Speech-to-Text API (SDE-4 Pipeline)
+export interface TranscribeResponse {
+  text: string;
+  session_id?: string;
+  duration_s: number;
+  chunks_processed: number;
+  duplicates_suppressed?: number;
+  interims_reconciled?: number;
+  segments?: Array<{
+    segment_id: string;
+    text: string;
+    start_time: number;
+    end_time: number;
+    confidence: number;
+    words?: Array<{ word: string; start_time: number; end_time: number }>;
+  }>;
+  error?: string;
+}
+
+export async function transcribeAudio(audioBlob: Blob, language = 'en-US'): Promise<TranscribeResponse> {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append('file', audioBlob, 'mic_recording.wav');
+  formData.append('language', language);
+
+  const headers: HeadersInit = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${API_BASE}/voice/transcribe`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const errorJson = await res.json().catch(() => ({}));
+    throw new Error(errorJson.detail || 'Audio transcription failed');
+  }
+
+  return res.json();
+}
+
 export const FALLBACK_MODELS: ModelOption[] = [
-  { id: 'openai/gpt-oss-20b', name: 'GPT OSS 20B (Fast)', provider: 'Groq', description: 'Fast, efficient model for general chat', is_default: true },
-  { id: 'openai/gpt-oss-120b', name: 'GPT OSS 120B (Powerful)', provider: 'Groq', description: 'Largest available model for complex reasoning tasks' },
-  { id: 'qwen/qwen3.8-27b', name: 'Qwen3.8 27B (Reasoning)', provider: 'Groq', description: 'Advanced reasoning, math, and multilingual tasks' },
-  { id: 'flux-image-gen', name: 'AI Image Generator (Gemini 2.0)', provider: 'Gemini / HuggingFace / Pollinations', description: 'Photorealistic image generation via Gemini 2.0 Flash (1,500 free/day)' },
-  { id: 'openai/gpt-oss-120b-vision', name: 'Vision & OCR (GPT OSS 120B)', provider: 'Groq Vision', description: 'Reads & extracts text from images, scans, and diagrams' },
+  { id: 'auto', name: '🤖 Auto (Gemini + Groq)', provider: 'Smart Router', description: 'Automatically uses Gemini for all tasks; Groq Qwen as fallback on rate limit', is_default: true },
+  { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash', provider: 'Google AI', description: 'Fast, up-to-date, multimodal reasoning with real-world grounding' },
+  { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash Lite', provider: 'Google AI', description: 'Ultra-fast lightweight Gemini model for simple queries' },
+  { id: 'qwen/qwen3.8-27b', name: 'Qwen 3.8 27B (Groq)', provider: 'Groq', description: 'Advanced reasoning & multilingual — Groq LPU speed' },
+  { id: 'flux-image-gen', name: '🎨 AI Image Generator', provider: 'Gemini / Pollinations', description: 'Photorealistic image generation with automatic fallback' },
+  { id: 'gemini-vision', name: '👁️ Vision & OCR (Gemini)', provider: 'Google AI', description: 'Read & extract text from images, scans, and diagrams via Gemini' },
 ];
 
 // Models API
@@ -241,6 +286,7 @@ export async function streamMessage({
   model,
   useRag,
   imageData,
+  attachedFilename,
   onChunk,
   onSources,
   onDone,
@@ -251,6 +297,7 @@ export async function streamMessage({
   model: string;
   useRag: boolean;
   imageData?: string;
+  attachedFilename?: string;
   onChunk: (chunk: string) => void;
   onSources?: (sources: RagSource[]) => void;
   onDone: (fullContent: string) => void;
@@ -270,6 +317,7 @@ export async function streamMessage({
         model,
         use_rag: useRag,
         image_data: imageData,
+        attached_filename: attachedFilename,
       }),
     });
 

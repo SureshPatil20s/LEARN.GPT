@@ -77,6 +77,7 @@ class Document(Base):
 
     id = Column(String(64), primary_key=True, default=generate_uuid)
     user_id = Column(String(64), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    conversation_id = Column(String(64), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=True, index=True)
     filename = Column(String(255), nullable=False)
     file_type = Column(String(32), nullable=False)  # 'pdf', 'docx', 'txt', 'csv', 'json'
     file_size = Column(Integer, default=0)
@@ -86,6 +87,7 @@ class Document(Base):
 
     # Relationships
     user = relationship("User", back_populates="documents")
+    conversation = relationship("Conversation")
     chunks = relationship("DocumentChunk", back_populates="document", cascade="all, delete-orphan")
 
 
