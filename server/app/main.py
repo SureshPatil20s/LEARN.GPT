@@ -51,12 +51,8 @@ app.include_router(interviews_router, prefix=settings.API_V1_STR)
 
 @app.get("/health")
 def health_check():
-    return {
-        "status": "healthy",
-        "service": settings.PROJECT_NAME,
-        "default_model": settings.DEFAULT_MODEL,
-        "groq_configured": bool(settings.GROQ_API_KEY)
-    }
+    """Simple public health check endpoint."""
+    return {"status": "ok"}
 
 
 @app.get(f"{settings.API_V1_STR}/models")
