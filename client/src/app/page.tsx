@@ -38,6 +38,7 @@ import {
   updateConversation,
   uploadDocument,
   deleteDocument,
+  checkBackendHealth,
 } from '@/lib/api';
 import { AppSettings, Conversation, DocumentItem, MemoryItem, Message, ModelOption, Persona, PromptTemplate, RagSource } from '@/types';
 
@@ -136,12 +137,9 @@ export default function Home() {
       })
       .catch(() => {});
 
-    // Health check
-    fetch('http://localhost:8000/health')
-      .then((res) => {
-        if (!res.ok) setBackendOffline(true);
-        else setBackendOffline(false);
-      })
+    // Dynamic backend health check
+    checkBackendHealth()
+      .then((isHealthy) => setBackendOffline(!isHealthy))
       .catch(() => setBackendOffline(true));
   }, []);
 

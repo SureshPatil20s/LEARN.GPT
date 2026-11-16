@@ -80,15 +80,36 @@ class Settings(BaseSettings):
         },
     ]
 
+    # Environment & Host Configuration
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
+    FRONTEND_URL: Optional[str] = os.getenv("FRONTEND_URL", "")
+    ADDITIONAL_CORS_ORIGINS: Optional[str] = os.getenv("ADDITIONAL_CORS_ORIGINS", "")
+
     # Google OAuth
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
 
-    # CORS settings
-    CORS_ORIGINS: list = [
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "https://*.vercel.app"
-    ]
+    def get_cors_origins(self) -> list:
+        """
+        Returns exact configured allowed CORS origins.
+        Localhost origins are preserved strictly for local development.
+        Production requires explicit FRONTEND_URL and/or ADDITIONAL_CORS_ORIGINS.
+        """
+        origins = []
+        if self.ENVIRONMENT.lower() != "production":
+            origins.extend(["http://localhost:3000", "http://127.0.0.1:3000"])
+
+        if self.FRONTEND_URL and self.FRONTEND_URL.strip():
+            origins.append(self.FRONTEND_URL.strip().rstrip("/"))
+
+        if self.ADDITIONAL_CORS_ORIGINS and self.ADDITIONAL_CORS_ORIGINS.strip():
+            for item in self.ADDITIONAL_CORS_ORIGINS.split(","):
+                cleaned = item.strip().rstrip("/")
+                if cleaned and cleaned not in origins:
+                    origins.append(cleaned)
+
+        if not origins:
+            origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
+        return origins
 
     # Platform Capacity (Strictly 10 registered/active users)
     MAX_TOTAL_USERS: int = 10

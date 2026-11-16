@@ -1,9 +1,21 @@
 # Local Environment & Secrets
 .env
+.env.local
+.env.*.local
+*.env
 serviceAccountKey.json
+*serviceAccount*.json
+*.pem
+
+# Python
 *.pyc
+*.pyo
 __pycache__/
 .pytest_cache/
+*.egg-info/
+dist/
+build/
+.mypy_cache/
 
 # User data
 data/users/
@@ -15,4 +27,16 @@ experiments/*.json
 # Virtual Environment
 venv/
 .venv/
+env/
+
+# Node / Next.js (root-level, in case)
+node_modules/
+.next/
+out/
+npm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.DS_Store
 

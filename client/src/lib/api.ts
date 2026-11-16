@@ -595,6 +595,17 @@ export async function downloadInterviewReportMarkdown(sessionId: string): Promis
   return res.text();
 }
 
+export async function checkBackendHealth(): Promise<boolean> {
+  try {
+    const rootUrl = API_BASE.replace(/\/api\/v1\/?$/, '');
+    const res = await fetch(`${rootUrl}/health`);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+
 
 
 

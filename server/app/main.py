@@ -19,8 +19,10 @@ from server.app.api.personas_prompts import router as personas_prompts_router
 from server.app.api.memory import router as memory_router
 from server.app.api.interviews import router as interviews_router
 
-# Auto-create tables (SQLite or PostgreSQL)
-Base.metadata.create_all(bind=engine)
+# In development/local SQLite, initialize tables if needed.
+# In production, schema migrations are strictly managed via Alembic (alembic upgrade head).
+if settings.ENVIRONMENT.lower() != "production" and not os.getenv("RENDER"):
+    Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -28,10 +30,10 @@ app = FastAPI(
     version="3.0.0"
 )
 
-# Configure CORS for Next.js frontend
+# Configure CORS: restricted to exact configured origins in production, with localhost in dev
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows local Next.js dev server & Vercel deployments
+    allow_origins=settings.get_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
