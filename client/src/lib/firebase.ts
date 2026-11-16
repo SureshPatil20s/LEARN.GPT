@@ -1,5 +1,13 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, UserCredential } from 'firebase/auth';
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
+  UserCredential,
+} from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyDWsWDpEC-OtNGgK8c6xLlFIPVzwU5BzUg",
@@ -37,4 +45,42 @@ export async function signInWithGooglePopup(): Promise<{
     idToken: idToken,
   };
 }
+
+export async function signInWithFirebaseEmail(email: string, pass: string): Promise<{
+  email: string;
+  name: string;
+  idToken: string;
+}> {
+  const result: UserCredential = await signInWithEmailAndPassword(auth, email, pass);
+  const user = result.user;
+  const idToken = await user.getIdToken();
+
+  return {
+    email: user.email || '',
+    name: user.displayName || user.email?.split('@')[0] || 'User',
+    idToken,
+  };
+}
+
+export async function signUpWithFirebaseEmail(email: string, pass: string, name: string): Promise<{
+  email: string;
+  name: string;
+  idToken: string;
+}> {
+  const result: UserCredential = await createUserWithEmailAndPassword(auth, email, pass);
+  const user = result.user;
+  if (name.trim()) {
+    try {
+      await updateProfile(user, { displayName: name.trim() });
+    } catch {}
+  }
+  const idToken = await user.getIdToken();
+
+  return {
+    email: user.email || '',
+    name: name.trim() || user.email?.split('@')[0] || 'User',
+    idToken,
+  };
+}
+
 

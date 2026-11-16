@@ -22,6 +22,8 @@ interface ChatInputProps {
   isStreaming: boolean;
   onStopStreaming: () => void;
   disabled?: boolean;
+  externalText?: string;
+  onClearExternalText?: () => void;
 }
 
 export default function ChatInput({
@@ -29,8 +31,21 @@ export default function ChatInput({
   isStreaming,
   onStopStreaming,
   disabled = false,
+  externalText,
+  onClearExternalText,
 }: ChatInputProps) {
   const [input, setInput] = useState('');
+
+  // Sync external text when injected from Prompt Library
+  useEffect(() => {
+    if (externalText) {
+      setInput(externalText);
+      onClearExternalText?.();
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+      }
+    }
+  }, [externalText, onClearExternalText]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
 
@@ -172,20 +187,20 @@ export default function ChatInput({
   };
 
   return (
-    <div className="p-4 bg-gradient-to-t from-[#121212] via-[#121212] to-transparent shrink-0">
+    <div className="p-4 bg-gradient-to-t from-slate-50 via-slate-50/90 to-transparent dark:from-[#121212] dark:via-[#121212]/90 dark:to-transparent shrink-0">
       <div className="max-w-3xl mx-auto">
         {/* Status / Preview Chips */}
         <div className="flex flex-wrap items-center gap-2 mb-2">
           {selectedFile && (
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#212121] border border-zinc-700 text-xs text-zinc-200">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-200 dark:bg-[#212121] border border-zinc-300 dark:border-zinc-700 text-xs text-zinc-800 dark:text-zinc-200">
               {getFileIcon(selectedFile.name)}
               <span className="font-medium truncate max-w-xs">{selectedFile.name}</span>
-              <span className="text-[10px] text-zinc-400">
+              <span className="text-[10px] text-zinc-500 dark:text-zinc-400">
                 ({(selectedFile.size / 1024).toFixed(1)} KB)
               </span>
               <button
                 onClick={() => setSelectedFile(null)}
-                className="p-0.5 hover:text-rose-400 text-zinc-400 rounded-full"
+                className="p-0.5 hover:text-rose-500 text-zinc-400 rounded-full"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -194,32 +209,32 @@ export default function ChatInput({
 
           {/* Active Voice Recording Pill */}
           {isRecording && (
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-xl bg-rose-500/15 border border-rose-500/40 text-xs text-rose-300 animate-pulse">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-xl bg-rose-500/15 border border-rose-500/40 text-xs text-rose-500 dark:text-rose-300 animate-pulse">
               <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
               <span className="font-medium">Listening ({formatTimer(recordSeconds)})</span>
-              <span className="text-[10px] text-rose-400">• Click mic to transcribe</span>
+              <span className="text-[10px] text-rose-500 dark:text-rose-400">• Click mic to transcribe</span>
             </div>
           )}
 
           {/* Transcribing Spinner Pill */}
           {isTranscribing && (
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-xs text-emerald-300">
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-xs text-emerald-600 dark:text-emerald-300">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-500 dark:text-emerald-400" />
               <span>Transcribing voice chunks...</span>
             </div>
           )}
 
           {/* Voice Notice (duration / stats) */}
           {!isRecording && !isTranscribing && voiceNotice && (
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-zinc-800 text-[11px] text-zinc-300 border border-zinc-700">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-zinc-200 dark:bg-zinc-800 text-[11px] text-zinc-700 dark:text-zinc-300 border border-zinc-300 dark:border-zinc-700">
               <span>🎙️ {voiceNotice}</span>
             </div>
           )}
         </div>
 
         {/* Input Pill Box */}
-        <div className={`relative flex items-end gap-2 bg-[#212121] border rounded-2xl p-2 transition-colors shadow-lg ${
-          isRecording ? 'border-rose-500/60 ring-1 ring-rose-500/30' : 'border-zinc-800 focus-within:border-zinc-600'
+        <div className={`relative flex items-end gap-2 bg-white dark:bg-[#212121] border rounded-2xl p-2 transition-colors shadow-lg ${
+          isRecording ? 'border-rose-500/60 ring-1 ring-rose-500/30' : 'border-zinc-300 dark:border-zinc-800 focus-within:border-emerald-500 dark:focus-within:border-zinc-600'
         }`}>
           {/* File Upload Trigger */}
           <input
@@ -233,7 +248,7 @@ export default function ChatInput({
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={isRecording || isTranscribing}
-            className="p-2 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-xl transition shrink-0 disabled:opacity-40"
+            className="p-2 text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl transition shrink-0 disabled:opacity-40"
             title="Attach file or image for OCR (PDF, DOCX, TXT, CSV, JSON, PNG, JPG)"
           >
             <Paperclip className="w-4 h-4" />
@@ -248,13 +263,13 @@ export default function ChatInput({
               isRecording
                 ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/25 animate-pulse'
                 : isTranscribing
-                ? 'bg-zinc-800 text-emerald-400'
-                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                ? 'bg-zinc-200 dark:bg-zinc-800 text-emerald-600 dark:text-emerald-400'
+                : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800'
             }`}
             title={isRecording ? 'Click to finish speaking and transcribe' : 'Dictate with Voice (SDE-4 Speech-to-Text)'}
           >
             {isTranscribing ? (
-              <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
+              <Loader2 className="w-4 h-4 animate-spin text-emerald-500 dark:text-emerald-400" />
             ) : isRecording ? (
               <MicOff className="w-4 h-4" />
             ) : (
@@ -275,7 +290,7 @@ export default function ChatInput({
                 : 'Message LEARN.GPT... (or click 🎙️ to speak, attach files, /image to draw)'
             }
             disabled={disabled}
-            className="flex-1 bg-transparent border-0 text-sm text-white placeholder-zinc-500 focus:outline-none resize-none py-1.5 max-h-48 scrollbar-thin scrollbar-thumb-zinc-700"
+            className="flex-1 bg-transparent border-0 text-sm text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none resize-none py-1.5 max-h-48 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-700"
           />
 
           {/* Send or Stop Button */}
@@ -283,7 +298,7 @@ export default function ChatInput({
             <button
               type="button"
               onClick={onStopStreaming}
-              className="p-2 rounded-xl bg-zinc-200 hover:bg-white text-black transition shrink-0 shadow-md"
+              className="p-2 rounded-xl bg-zinc-800 dark:bg-zinc-200 hover:bg-zinc-900 dark:hover:bg-white text-white dark:text-black transition shrink-0 shadow-md"
               title="Stop generating"
             >
               <Square className="w-4 h-4 fill-current" />
@@ -296,7 +311,7 @@ export default function ChatInput({
               className={`p-2 rounded-xl transition shrink-0 shadow-md ${
                 (input.trim() || selectedFile) && !disabled && !isRecording && !isTranscribing
                   ? 'bg-emerald-500 hover:bg-emerald-400 text-black cursor-pointer'
-                  : 'bg-zinc-800 text-zinc-600 cursor-not-allowed'
+                  : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-600 cursor-not-allowed'
               }`}
               title="Send message"
             >
@@ -306,8 +321,9 @@ export default function ChatInput({
         </div>
 
         {/* Bottom Disclaimer */}
-        <p className="text-[11px] text-center text-zinc-500 mt-2">
-          LEARN.GPT Voice & Chat Platform · Speech-to-Text Pipeline · Hosted on Groq Cloud
+        <p className="text-[11px] text-center text-zinc-500 dark:text-zinc-500 mt-2 flex items-center justify-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-orange-500 inline-block" />
+          <span><strong className="text-zinc-700 dark:text-zinc-400 font-semibold">Powered by Groq:</strong> It uses Groq-hosted AI for fast, high-performance processing.</span>
         </p>
       </div>
     </div>

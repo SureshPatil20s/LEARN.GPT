@@ -83,23 +83,23 @@ export default function DocumentModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs">
-      <div className="relative w-full max-w-xl bg-[#161616] border border-zinc-800 rounded-2xl p-6 shadow-2xl animate-fade-in flex flex-col max-h-[85vh]">
+      <div className="relative w-full max-w-xl bg-white dark:bg-[#161616] border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-2xl animate-fade-in flex flex-col max-h-[85vh]">
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute right-4 top-4 p-1 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition"
+          className="absolute right-4 top-4 p-1 text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
         >
           <X className="w-5 h-5" />
         </button>
 
         {/* Modal Header */}
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-9 h-9 rounded-xl bg-emerald-950 border border-emerald-800/60 flex items-center justify-center text-emerald-400">
+          <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-950 border border-emerald-300 dark:border-emerald-800/60 flex items-center justify-center text-emerald-700 dark:text-emerald-400">
             <Database className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-white">RAG Knowledge Base</h2>
-            <p className="text-xs text-zinc-400">
+            <h2 className="text-lg font-bold text-zinc-900 dark:text-white">RAG Knowledge Base</h2>
+            <p className="text-xs text-zinc-600 dark:text-zinc-400">
               Upload documents to ground your AI answers with verifiable citations
             </p>
           </div>
@@ -107,7 +107,7 @@ export default function DocumentModal({
 
         {/* Error Alert */}
         {error && (
-          <div className="mb-4 p-3 rounded-xl bg-rose-950/40 border border-rose-800/60 text-xs text-rose-300 flex items-center gap-2">
+          <div className="mb-4 p-3 rounded-xl bg-rose-100 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800/60 text-xs text-rose-800 dark:text-rose-300 flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{error}</span>
           </div>
@@ -123,8 +123,8 @@ export default function DocumentModal({
           onDrop={handleFileDrop}
           className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition mb-5 ${
             dragOver
-              ? 'border-emerald-500 bg-emerald-950/20'
-              : 'border-zinc-800 bg-[#121212] hover:border-zinc-700'
+              ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/20'
+              : 'border-zinc-300 dark:border-zinc-800 bg-zinc-50 dark:bg-[#121212] hover:border-zinc-400 dark:hover:border-zinc-700'
           }`}
           onClick={() => document.getElementById('modal-file-upload')?.click()}
         >
@@ -138,46 +138,46 @@ export default function DocumentModal({
           />
           <div className="flex flex-col items-center gap-2">
             {isUploading ? (
-              <Loader2 className="w-8 h-8 text-emerald-400 animate-spin" />
+              <Loader2 className="w-8 h-8 text-emerald-500 dark:text-emerald-400 animate-spin" />
             ) : (
-              <div className="w-10 h-10 rounded-full bg-zinc-800/80 flex items-center justify-center text-zinc-400">
-                <Upload className="w-5 h-5 text-emerald-400" />
+              <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-800/80 flex items-center justify-center text-zinc-500 dark:text-zinc-400">
+                <Upload className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
               </div>
             )}
-            <div className="text-xs font-semibold text-zinc-200">
+            <div className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">
               {isUploading ? 'Chunking & indexing document...' : 'Click or drag files here to upload'}
             </div>
             <p className="text-[11px] text-zinc-500">
-              Supports PDF, DOCX, TXT, CSV, JSON (up to 25 MB)
+              Supports PDF, DOCX, TXT, CSV, JSON (up to 50 MB / 500 MB quota)
             </p>
           </div>
         </div>
 
         {/* Document List Header */}
-        <div className="flex items-center justify-between text-xs font-semibold text-zinc-400 px-1 mb-2">
+        <div className="flex items-center justify-between text-xs font-semibold text-zinc-500 dark:text-zinc-400 px-1 mb-2">
           <span>Uploaded Files ({documents.length})</span>
-          <span className="text-[11px] text-zinc-500">Indexed for Semantic Search</span>
+          <span className="text-[11px] text-zinc-400 dark:text-zinc-500">Indexed for Semantic Search</span>
         </div>
 
         {/* Document List */}
-        <div className="flex-1 overflow-y-auto space-y-2 pr-1 scrollbar-thin scrollbar-thumb-zinc-800">
+        <div className="flex-1 overflow-y-auto space-y-2 pr-1 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-800">
           {documents.length === 0 ? (
-            <div className="text-center py-8 text-xs text-zinc-500">
+            <div className="text-center py-8 text-xs text-zinc-400 dark:text-zinc-500">
               No documents uploaded yet. Upload a PDF or file to query it via RAG.
             </div>
           ) : (
             documents.map((doc) => (
               <div
                 key={doc.id}
-                className="flex items-center justify-between p-3 rounded-xl bg-[#1b1b1b] border border-zinc-800 hover:border-zinc-700 transition"
+                className="flex items-center justify-between p-3 rounded-xl bg-zinc-100 dark:bg-[#1b1b1b] border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 transition"
               >
                 <div className="flex items-center gap-3 min-w-0">
                   {getDocIcon(doc.file_type)}
                   <div className="flex flex-col min-w-0">
-                    <span className="text-xs font-medium text-white truncate max-w-sm">
+                    <span className="text-xs font-medium text-zinc-900 dark:text-white truncate max-w-sm">
                       {doc.filename}
                     </span>
-                    <div className="flex items-center gap-2 text-[10px] text-zinc-400 mt-0.5">
+                    <div className="flex items-center gap-2 text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5">
                       <span>{formatFileSize(doc.file_size)}</span>
                       <span>•</span>
                       <span className="text-emerald-400">{doc.chunk_count} chunks indexed</span>

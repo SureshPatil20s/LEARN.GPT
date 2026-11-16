@@ -23,8 +23,14 @@ def get_documents(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Lists all uploaded documents for the authenticated user."""
-    docs = db.query(Document).filter(Document.user_id == current_user.id).order_by(Document.created_at.desc()).all()
+    """
+    Lists global knowledge base documents for the authenticated user.
+    Excludes ephemeral/chat-specific attached documents.
+    """
+    docs = db.query(Document).filter(
+        Document.user_id == current_user.id,
+        Document.conversation_id.is_(None)
+    ).order_by(Document.created_at.desc()).all()
     for d in docs:
         setattr(d, "chunk_count", d.total_chunks)
     return docs
@@ -33,13 +39,17 @@ def get_documents(
 @router.post("/upload", response_model=DocumentResponse)
 async def upload_document(
     file: UploadFile = File(...),
+    conversation_id: str = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
     Uploads and indexes a document (PDF, DOCX, TXT, CSV, JSON).
-    Strictly isolated to current user.
+    If conversation_id is provided, marks it as a chat-attached document.
     """
+    from sqlalchemy import func
+    from server.app.core.config import settings
+
     file_bytes = await file.read()
     filename = file.filename or "uploaded_file.txt"
     ext = filename.split(".")[-1].lower() if "." in filename else "txt"
@@ -51,11 +61,45 @@ async def upload_document(
             detail=f"Unsupported file type .{ext}. Allowed: PDF, DOCX, TXT, CSV, JSON"
         )
 
+    # 1. Check individual file size limit
+    if len(file_bytes) > settings.MAX_FILE_SIZE_BYTES:
+        max_mb = settings.MAX_FILE_SIZE_BYTES // (1024 * 1024)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File exceeds maximum allowed size of {max_mb} MB."
+        )
+
+    # 2. Check total user storage capacity (quota designed for 20+ users)
+    user_usage = db.query(func.coalesce(func.sum(Document.file_size), 0)).filter(
+        Document.user_id == current_user.id
+    ).scalar() or 0
+
+    if user_usage + len(file_bytes) > settings.MAX_USER_STORAGE_BYTES:
+        max_user_mb = settings.MAX_USER_STORAGE_BYTES // (1024 * 1024)
+        used_mb = user_usage / (1024 * 1024)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Storage quota exceeded. Your current usage is {used_mb:.1f} MB of {max_user_mb} MB limit."
+        )
+
+    # 3. Check document count limit for global knowledge base files
+    if conversation_id is None:
+        global_doc_count = db.query(Document).filter(
+            Document.user_id == current_user.id,
+            Document.conversation_id.is_(None)
+        ).count()
+        if global_doc_count >= settings.MAX_USER_DOCS_COUNT:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Document limit reached ({settings.MAX_USER_DOCS_COUNT} files). Please delete unused files from your RAG Knowledge Base."
+            )
+
     chunks_data = rag_service.extract_text_and_chunks(file_bytes, filename)
     max_pages = max([c.get("page_number", 1) for c in chunks_data], default=1)
 
     doc = Document(
         user_id=current_user.id,
+        conversation_id=conversation_id,
         filename=filename,
         file_type=ext,
         file_size=len(file_bytes),

@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User } from '@/types';
 import { getCurrentUser, getToken, loginUser, loginWithGoogleApi, registerUser, setToken, updateCurrentUser, loginAsGuest } from '@/lib/api';
+import { signInWithFirebaseEmail, signUpWithFirebaseEmail } from '@/lib/firebase';
 
 interface AuthContextType {
   user: User | null;
@@ -72,16 +73,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const login = async (email: string, pass: string) => {
-    const res = await loginUser(email, pass);
-    setTokenState(res.access_token);
-    setUser(res.user);
+    try {
+      // First attempt Firebase Email/Password Auth
+      const fbUser = await signInWithFirebaseEmail(email, pass);
+      const res = await loginWithGoogleApi(fbUser.email, fbUser.name, undefined, fbUser.idToken);
+      setTokenState(res.access_token);
+      setUser(res.user);
+    } catch {
+      // Fallback to local database authentication
+      const res = await loginUser(email, pass);
+      setTokenState(res.access_token);
+      setUser(res.user);
+    }
     setAuthModalOpen(false);
   };
 
   const register = async (email: string, pass: string, name: string) => {
-    const res = await registerUser(email, pass, name);
-    setTokenState(res.access_token);
-    setUser(res.user);
+    try {
+      // First attempt Firebase Email/Password Sign Up
+      const fbUser = await signUpWithFirebaseEmail(email, pass, name);
+      const res = await loginWithGoogleApi(fbUser.email, fbUser.name, undefined, fbUser.idToken);
+      setTokenState(res.access_token);
+      setUser(res.user);
+    } catch {
+      // Fallback to local database registration
+      const res = await registerUser(email, pass, name);
+      setTokenState(res.access_token);
+      setUser(res.user);
+    }
     setAuthModalOpen(false);
   };
 

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
+import { ThemeProvider } from '@/context/ThemeContext';
 import GoogleOAuthWrapper from '@/components/GoogleOAuthWrapper';
 
 const geistSans = Geist({
@@ -25,12 +26,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark h-full">
+    <html lang="en" className="dark h-full" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased h-full bg-[#121212] text-zinc-100 flex flex-col`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased h-full bg-slate-50 dark:bg-[#121212] text-zinc-900 dark:text-zinc-100 flex flex-col transition-colors duration-200`}
       >
         <GoogleOAuthWrapper>
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            <ThemeProvider>{children}</ThemeProvider>
+          </AuthProvider>
         </GoogleOAuthWrapper>
       </body>
     </html>

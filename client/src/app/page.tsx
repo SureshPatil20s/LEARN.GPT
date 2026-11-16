@@ -7,6 +7,13 @@ import ChatArea from '@/components/ChatArea';
 import ChatInput from '@/components/ChatInput';
 import AuthModal from '@/components/AuthModal';
 import DocumentModal from '@/components/DocumentModal';
+import PersonaModal from '@/components/PersonaModal';
+import PromptLibraryModal from '@/components/PromptLibraryModal';
+import SettingsModal from '@/components/SettingsModal';
+import LearningModePanel, { LearningMode } from '@/components/LearningModePanel';
+import QuizModal, { QuizQuestion } from '@/components/QuizModal';
+import InterviewerModal from '@/components/InterviewerModal';
+import { getLearningModeSystemPrompt, buildQuizGenerationPrompt, parseQuizResponse } from '@/lib/learningMode';
 import { useAuth } from '@/context/AuthContext';
 import {
   createConversation,
@@ -15,13 +22,24 @@ import {
   getConversation,
   getConversations,
   getDocuments,
+  getPersonas,
+  createPersona,
+  deletePersona,
+  getPromptTemplates,
+  createPromptTemplate,
+  deletePromptTemplate,
+  getMemories,
+  createMemory,
+  toggleMemory,
+  deleteMemory,
+  clearAllMemories,
   streamMessage,
   submitMessageFeedback,
   updateConversation,
   uploadDocument,
   deleteDocument,
 } from '@/lib/api';
-import { Conversation, DocumentItem, Message, ModelOption, RagSource } from '@/types';
+import { AppSettings, Conversation, DocumentItem, MemoryItem, Message, ModelOption, Persona, PromptTemplate, RagSource } from '@/types';
 
 export default function Home() {
   const { user } = useAuth();
@@ -31,20 +49,82 @@ export default function Home() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [models, setModels] = useState<ModelOption[]>([]);
-  const [selectedModel, setSelectedModel] = useState<string>('openai/gpt-oss-20b');
-  const [useRag, setUseRag] = useState<boolean>(true);
+  const [selectedModel, setSelectedModel] = useState<string>('auto');
+  const [useRag, setUseRag] = useState<boolean>(false);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
 
   // UI state
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
   const [docModalOpen, setDocModalOpen] = useState<boolean>(false);
+  const [personaModalOpen, setPersonaModalOpen] = useState<boolean>(false);
+  const [promptModalOpen, setPromptModalOpen] = useState<boolean>(false);
+  const [settingsModalOpen, setSettingsModalOpen] = useState<boolean>(false);
+  const [learningModePanelOpen, setLearningModePanelOpen] = useState<boolean>(false);
+  const [quizModalOpen, setQuizModalOpen] = useState<boolean>(false);
+  const [interviewerModalOpen, setInterviewerModalOpen] = useState<boolean>(false);
+  const [learningMode, setLearningMode] = useState<LearningMode>('standard');
   const [backendOffline, setBackendOffline] = useState<boolean>(false);
+
+  // App Settings & Cross-Chat Memory
+  const [memories, setMemories] = useState<MemoryItem[]>([]);
+  const [settings, setSettings] = useState<AppSettings>({
+    use_rag: false,
+    use_web_search: false,
+    use_memory: true,
+    temperature: 0.7,
+    max_tokens: 2048,
+    default_model: 'auto',
+    custom_system_prompt: '',
+    show_interviewer: false,
+  });
+
+  // Personas & Prompt Library state
+  const [personas, setPersonas] = useState<Persona[]>([]);
+  const [activePersona, setActivePersona] = useState<Persona | null>(null);
+  const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([]);
+  const [injectedPromptText, setInjectedPromptText] = useState<string>('');
 
   // Streaming state
   const [isStreaming, setIsStreaming] = useState<boolean>(false);
   const [streamingContent, setStreamingContent] = useState<string>('');
   const [streamingSources, setStreamingSources] = useState<RagSource[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Load Settings from LocalStorage on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('learn_gpt_settings');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Force RAG to stay OFF by default on load/refresh until user explicitly enables it for a chat
+        parsed.use_rag = false;
+        setSettings((prev) => ({ ...prev, ...parsed, use_rag: false }));
+        if (parsed.default_model) setSelectedModel(parsed.default_model);
+      }
+    } catch {}
+    setUseRag(false); // Strictly OFF by default
+  }, []);
+
+  const handleUpdateSettings = (updates: Partial<AppSettings>) => {
+    setSettings((prev) => {
+      const next = { ...prev, ...updates };
+      try {
+        localStorage.setItem('learn_gpt_settings', JSON.stringify(next));
+      } catch {}
+      if (updates.default_model) setSelectedModel(updates.default_model);
+      if (typeof updates.use_rag === 'boolean') setUseRag(updates.use_rag);
+      return next;
+    });
+  };
+
+  const refreshMemories = useCallback(async () => {
+    try {
+      const data = await getMemories();
+      setMemories(data);
+    } catch (err) {
+      console.error('Failed to load memories:', err);
+    }
+  }, []);
 
   // Load Models & Check Backend Connectivity
   useEffect(() => {
@@ -87,10 +167,34 @@ export default function Home() {
     }
   }, []);
 
+  const refreshPersonas = useCallback(async () => {
+    try {
+      const data = await getPersonas();
+      setPersonas(data);
+      if (data.length > 0 && !activePersona) {
+        setActivePersona(data[0]); // default to General Assistant
+      }
+    } catch (err) {
+      console.error('Failed to load personas:', err);
+    }
+  }, [activePersona]);
+
+  const refreshPromptTemplates = useCallback(async () => {
+    try {
+      const data = await getPromptTemplates();
+      setPromptTemplates(data);
+    } catch (err) {
+      console.error('Failed to load prompt templates:', err);
+    }
+  }, []);
+
   useEffect(() => {
     refreshConversations();
     refreshDocuments();
-  }, [user, refreshConversations, refreshDocuments]);
+    refreshPersonas();
+    refreshPromptTemplates();
+    refreshMemories();
+  }, [user, refreshConversations, refreshDocuments, refreshPersonas, refreshPromptTemplates, refreshMemories]);
 
   // Load messages whenever active conversation changes
   useEffect(() => {
@@ -106,10 +210,16 @@ export default function Home() {
       .catch((err) => console.error('Failed to load messages:', err));
   }, [activeConversationId]);
 
-  // Create New Chat
+  // Create New Chat (inherits active persona/system prompt)
   const handleNewChat = async () => {
     try {
-      const newConv = await createConversation('New Chat', selectedModel);
+      setUseRag(false); // Reset RAG to OFF by default for every new chat
+      const newConv = await createConversation(
+        'New Chat',
+        selectedModel,
+        activePersona?.system_prompt,
+        activePersona?.id
+      );
       setConversations((prev) => [newConv, ...prev]);
       setActiveConversationId(newConv.id);
       setMessages([]);
@@ -165,69 +275,129 @@ export default function Home() {
     setDocuments((prev) => prev.filter((d) => d.id !== id));
   };
 
-  // Send Message & Stream
+  // Quiz Generator Callback
+  const handleGenerateQuiz = async (topic: string, numQuestions: number): Promise<QuizQuestion[]> => {
+    let convId = activeConversationId;
+    if (!convId) {
+      const newConv = await createConversation(`Quiz: ${topic.slice(0, 24)}`, selectedModel);
+      setConversations((prev) => [newConv, ...prev]);
+      setActiveConversationId(newConv.id);
+      convId = newConv.id;
+    }
+
+    const quizPrompt = buildQuizGenerationPrompt(topic, numQuestions);
+    let fullResponse = '';
+
+    await streamMessage({
+      conversationId: convId,
+      content: quizPrompt,
+      model: selectedModel,
+      useRag: true,
+      useWebSearch: false,
+      useMemory: false,
+      temperature: 0.3,
+      onChunk: (chunk) => {
+        fullResponse += chunk;
+      },
+      onDone: (final) => {
+        fullResponse = final;
+      },
+      onError: (err) => {
+        console.error('Quiz generation error:', err);
+      },
+    });
+
+    return parseQuizResponse(fullResponse);
+  };
+
+  // Send Message & Stream (Instant Lag-Free Optimistic Rendering)
   const handleSendMessage = async (content: string, attachedFile?: File, imageDataUrl?: string) => {
     if (!content.trim() && !attachedFile && !imageDataUrl) return;
     if (isStreaming) return; // Prevent concurrent requests collisions
 
     let convId = activeConversationId;
-
-    // Auto-create conversation if none is active
-    if (!convId) {
-      try {
-        const titleSnippet = content.trim().slice(0, 30) || (imageDataUrl ? 'Image OCR Analysis' : 'New Chat');
-        const newConv = await createConversation(titleSnippet, selectedModel);
-        setConversations((prev) => [newConv, ...prev]);
-        setActiveConversationId(newConv.id);
-        convId = newConv.id;
-      } catch (err) {
-        console.error('Failed to auto-create conversation:', err);
-        return;
-      }
-    }
-
-    // If file was attached (and not an image), upload to RAG document index
-    let attachedName: string | undefined = undefined;
     const isImageFile = attachedFile && attachedFile.name.match(/\.(png|jpg|jpeg|webp)$/i);
-    if (attachedFile && !isImageFile) {
-      try {
-        await handleUploadDocument(attachedFile);
-        attachedName = attachedFile.name;
-      } catch (err: any) {
-        alert(`Failed to index file: ${err.message}`);
-      }
-    }
 
-    // Add user message optimistically
+    // 1. Instantly display user message in chat (0ms lag! Never vanishes!)
     const displayContent = imageDataUrl
       ? `![Attached Image](${imageDataUrl})\n\n${content || 'Please extract all text (OCR) from this image and summarize its content.'}`
-      : attachedName
-      ? `📄 **[Attached Document: ${attachedName}]**\n\n${content || 'Please explain the contents of this document.'}`
+      : attachedFile
+      ? `📄 **[Attached Document: ${attachedFile.name}]**\n\n${content || 'Please explain the contents of this document.'}`
       : content;
 
     const userMsg: Message = {
       id: `temp-${Date.now()}`,
-      conversation_id: convId,
+      conversation_id: convId || 'pending',
       role: 'user',
       content: displayContent,
       created_at: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, userMsg]);
 
-    // Prepare streaming
+    // 2. Instantly activate streaming indicator so screen never goes blank
     setIsStreaming(true);
-    setStreamingContent('');
     setStreamingSources([]);
+    if (attachedFile && !isImageFile) {
+      setStreamingContent(`📄 Indexing "${attachedFile.name}" into RAG knowledge base...\n\nPlease wait a moment while the document is chunked and analyzed.`);
+    } else {
+      setStreamingContent('');
+    }
 
+    // 3. Auto-create conversation if none is active
+    if (!convId) {
+      try {
+        const titleSnippet = content.trim().slice(0, 30) || (imageDataUrl ? 'Image OCR Analysis' : 'New Chat');
+        const newConv = await createConversation(
+          titleSnippet,
+          selectedModel,
+          activePersona?.system_prompt,
+          activePersona?.id
+        );
+        setConversations((prev) => [newConv, ...prev]);
+        setActiveConversationId(newConv.id);
+        convId = newConv.id;
+        userMsg.conversation_id = newConv.id;
+      } catch (err) {
+        console.error('Failed to auto-create conversation:', err);
+        setIsStreaming(false);
+        setStreamingContent('');
+        return;
+      }
+    }
+
+    // 4. Upload attached document if present (user already sees their prompt on screen!)
+    let attachedName: string | undefined = undefined;
+    if (attachedFile && !isImageFile) {
+      try {
+        await uploadDocument(attachedFile, convId);
+        attachedName = attachedFile.name;
+        setStreamingContent(''); // Clear indexing notice as stream starts
+      } catch (err: any) {
+        console.error('Attachment upload failed:', err);
+        setStreamingContent('');
+        alert(`Failed to index file: ${err.message}`);
+      }
+    }
+
+    // 5. Begin streaming completion with learning mode, persistent memory and web search parameters
     let collectedSources: RagSource[] = [];
+    const modePrompt = getLearningModeSystemPrompt(learningMode);
+    const effectiveSystemPrompt = modePrompt
+      ? `${modePrompt}\n\n${activePersona?.system_prompt || ''}`
+      : activePersona?.system_prompt;
 
     await streamMessage({
       conversationId: convId,
       content,
       model: selectedModel,
       useRag,
+      useWebSearch: settings.use_web_search,
+      useMemory: settings.use_memory,
+      temperature: settings.temperature,
+      maxTokens: settings.max_tokens,
       imageData: imageDataUrl,
       attachedFilename: attachedName,
+      systemPrompt: effectiveSystemPrompt,
       onChunk: (chunk) => {
         setStreamingContent((prev) => prev + chunk);
       },
@@ -304,8 +474,22 @@ export default function Home() {
     }
   };
 
+  // Clear All Conversation History
+  const handleClearHistory = async () => {
+    try {
+      for (const c of conversations) {
+        await deleteConversation(c.id).catch(() => {});
+      }
+      setConversations([]);
+      setActiveConversationId(null);
+      setMessages([]);
+    } catch (err) {
+      console.error('Failed to clear history:', err);
+    }
+  };
+
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#121212] text-zinc-100 font-sans">
+    <div className="flex h-screen w-screen overflow-hidden bg-zinc-50 dark:bg-[#121212] text-zinc-900 dark:text-zinc-100 font-sans transition-colors">
       {/* Sidebar */}
       <Sidebar
         conversations={conversations}
@@ -316,6 +500,7 @@ export default function Home() {
         onRenameConversation={handleRenameConversation}
         onTogglePin={handleTogglePin}
         onOpenDocuments={() => setDocModalOpen(true)}
+        onOpenSettings={() => setSettingsModalOpen(true)}
         isOpen={sidebarOpen}
         onToggleOpen={() => setSidebarOpen((prev) => !prev)}
       />
@@ -330,8 +515,18 @@ export default function Home() {
           onSelectModel={setSelectedModel}
           useRag={useRag}
           onToggleRag={() => setUseRag((prev) => !prev)}
+          useWebSearch={settings.use_web_search}
+          onToggleWebSearch={() => handleUpdateSettings({ use_web_search: !settings.use_web_search })}
           docCount={documents.length}
           onOpenDocuments={() => setDocModalOpen(true)}
+          activePersona={activePersona}
+          onOpenPersonas={() => setPersonaModalOpen(true)}
+          onOpenPromptLibrary={() => setPromptModalOpen(true)}
+          onOpenSettings={() => setSettingsModalOpen(true)}
+          learningMode={learningMode}
+          onOpenLearningMode={() => setLearningModePanelOpen(true)}
+          onOpenQuiz={() => setQuizModalOpen(true)}
+          onOpenInterviewer={settings.show_interviewer ? () => setInterviewerModalOpen(true) : undefined}
         />
 
         {/* Backend Offline Notice */}
@@ -366,6 +561,8 @@ export default function Home() {
           onSendMessage={handleSendMessage}
           isStreaming={isStreaming}
           onStopStreaming={() => setIsStreaming(false)}
+          externalText={injectedPromptText}
+          onClearExternalText={() => setInjectedPromptText('')}
         />
       </div>
 
@@ -377,6 +574,87 @@ export default function Home() {
         documents={documents}
         onUpload={handleUploadDocument}
         onDelete={handleDeleteDocument}
+      />
+      <PersonaModal
+        isOpen={personaModalOpen}
+        onClose={() => setPersonaModalOpen(false)}
+        personas={personas}
+        activePersonaId={activePersona?.id}
+        onSelectPersona={(p) => setActivePersona(p)}
+        onCreatePersona={async (data) => {
+          const created = await createPersona(data);
+          setPersonas((prev) => [created, ...prev]);
+          setActivePersona(created);
+        }}
+        onDeletePersona={async (id) => {
+          await deletePersona(id);
+          setPersonas((prev) => prev.filter((p) => p.id !== id));
+          if (activePersona?.id === id) {
+            setActivePersona(personas[0] || null);
+          }
+        }}
+      />
+      <PromptLibraryModal
+        isOpen={promptModalOpen}
+        onClose={() => setPromptModalOpen(false)}
+        templates={promptTemplates}
+        onUsePrompt={(filledPrompt) => {
+          setInjectedPromptText(filledPrompt);
+        }}
+        onCreateTemplate={async (data) => {
+          const created = await createPromptTemplate(data);
+          setPromptTemplates((prev) => [created, ...prev]);
+        }}
+        onDeleteTemplate={async (id) => {
+          await deletePromptTemplate(id);
+          setPromptTemplates((prev) => prev.filter((t) => t.id !== id));
+        }}
+      />
+      <SettingsModal
+        isOpen={settingsModalOpen}
+        onClose={() => setSettingsModalOpen(false)}
+        settings={settings}
+        onUpdateSettings={handleUpdateSettings}
+        memories={memories}
+        onAddMemory={async (content, category) => {
+          const created = await createMemory(content, category);
+          setMemories((prev) => [created, ...prev]);
+        }}
+        onToggleMemory={async (id) => {
+          const updated = await toggleMemory(id);
+          setMemories((prev) => prev.map((m) => (m.id === id ? updated : m)));
+        }}
+        onDeleteMemory={async (id) => {
+          await deleteMemory(id);
+          setMemories((prev) => prev.filter((m) => m.id !== id));
+        }}
+        onClearAllMemories={async () => {
+          await clearAllMemories();
+          setMemories([]);
+        }}
+        models={models}
+        onClearHistory={handleClearHistory}
+      />
+      <LearningModePanel
+        isOpen={learningModePanelOpen}
+        onClose={() => setLearningModePanelOpen(false)}
+        currentMode={learningMode}
+        onSelectMode={(mode) => {
+          setLearningMode(mode);
+          if (mode === 'quiz') {
+            setQuizModalOpen(true);
+          }
+        }}
+      />
+      <QuizModal
+        isOpen={quizModalOpen}
+        onClose={() => setQuizModalOpen(false)}
+        onGenerateQuiz={handleGenerateQuiz}
+      />
+      <InterviewerModal
+        isOpen={interviewerModalOpen}
+        onClose={() => setInterviewerModalOpen(false)}
+        documents={documents}
       />
     </div>
   );

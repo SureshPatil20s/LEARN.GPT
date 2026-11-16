@@ -46,19 +46,25 @@ class Settings(BaseSettings):
             "id": "gemini-3.5-flash",
             "name": "Gemini 3.5 Flash",
             "provider": "Google AI",
-            "description": "Fast, up-to-date, multimodal reasoning with real-world grounding"
+            "description": "Fast, multimodal reasoning with real-world grounding"
         },
         {
             "id": "gemini-3.5-flash-lite",
             "name": "Gemini 3.5 Flash Lite",
             "provider": "Google AI",
-            "description": "Ultra-fast lightweight Gemini model for simple queries"
+            "description": "Ultra-fast lightweight Gemini model for rapid queries"
         },
         {
             "id": "qwen/qwen3.8-27b",
             "name": "Qwen 3.8 27B (Groq)",
             "provider": "Groq",
             "description": "Advanced reasoning & multilingual — Groq LPU speed"
+        },
+        {
+            "id": "openai/gpt-oss-120b",
+            "name": "GPT-OSS 120B (Groq)",
+            "provider": "Groq",
+            "description": "High-capacity open reasoning model — Groq LPU speed"
         },
         {
             "id": "flux-image-gen",
@@ -83,6 +89,18 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000",
         "https://*.vercel.app"
     ]
+
+    # Platform Capacity (Strictly 10 registered/active users)
+    MAX_TOTAL_USERS: int = 10
+
+    # Storage & Quotas (Configured for up to 10 users on local drive)
+    MAX_FILE_SIZE_BYTES: int = 50 * 1024 * 1024  # 50 MB per single file
+    MAX_USER_STORAGE_BYTES: int = 1000 * 1024 * 1024  # 1 GB per user (doubled storage for 10 users)
+    MAX_USER_DOCS_COUNT: int = 150  # Up to 150 docs per user
+
+    # Rate Limiting & User Request Allowances (Increased to 50 requests per user per day)
+    DAILY_CHAT_REQUEST_LIMIT: int = 50
+    DAILY_IMAGE_REQUEST_LIMIT: int = 20
 
     class Config:
         env_file = ".env"

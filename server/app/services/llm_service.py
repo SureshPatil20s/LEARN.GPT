@@ -4,7 +4,7 @@ Intelligent Multi-Model Router — LEARN.GPT Platform
 Primary Engine  : Google Gemini (gemini-2.0-flash / gemini-2.5-flash-lite)
 Vision / OCR    : Gemini multimodal (inline image_data)
 Image Gen       : Gemini image model → HuggingFace FLUX → Pollinations (free fallback chain)
-Groq Fallback   : qwen/qwen3.8-27b via AsyncGroq — auto-activates on Gemini 429
+Groq Fallback   : llama-3.3-70b via AsyncGroq — auto-activates on Gemini 429
 Auto-Recovery   : QuotaCircuitBreaker resets when Gemini quota window expires
 
 Intent routing (no manual model selection needed):
@@ -35,8 +35,12 @@ from server.app.core.config import settings
 # Constants
 # ---------------------------------------------------------------------------
 
+# Real Gemini models confirmed working — ordered primary → fallback
 GEMINI_TEXT_MODELS = ["gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.8-flash"]
 GEMINI_IMAGE_MODELS = ["gemini-2.5-flash-image", "gemini-3.1-flash-image"]
+
+# Groq confirmed working models — automatic failover chain
+GROQ_TEXT_MODELS = ["qwen/qwen3.8-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b"]
 GROQ_FALLBACK_MODEL = "qwen/qwen3.8-27b"
 
 IMAGE_GEN_TRIGGERS = (
@@ -113,10 +117,6 @@ def _detect_intent(messages: List[Dict[str, Any]], has_image_data: bool = False)
     # OCR / vision keywords
     if any(t in lower for t in OCR_TRIGGERS):
         return "OCR_VISION"
-
-    # Diagram request
-    if any(t in lower for t in DIAGRAM_TRIGGERS):
-        return "DIAGRAM"
 
     return "TEXT"
 
@@ -251,7 +251,8 @@ def _to_gemini_contents(messages: List[Dict[str, Any]]) -> Tuple[str, List[Dict]
         gemini_role = "model" if role == "assistant" else "user"
 
         if isinstance(content, str):
-            contents.append({"role": gemini_role, "parts": [{"text": content}]})
+            if content.strip():
+                contents.append({"role": gemini_role, "parts": [{"text": content}]})
         elif isinstance(content, list):
             # Multimodal content list (text + image_url parts)
             parts = []
@@ -339,41 +340,60 @@ class IntelligentRouter:
             async for chunk in self._handle_vision(messages, image_data):
                 yield chunk
 
-        elif intent == "DIAGRAM":
-            async for chunk in self._handle_diagram(messages, temperature):
-                yield chunk
-
-        else:  # TEXT
-            async for chunk in self._handle_text(messages, temperature, max_tokens):
+        else:  # TEXT & Interactive Visual Diagrams (Mermaid.js)
+            async for chunk in self._handle_text(messages, temperature, max_tokens, preferred_model=model):
                 yield chunk
 
     # ------------------------------------------------------------------
-    # TEXT — Gemini primary, Groq fallback
+    # TEXT — Automatic multi-model failover (Gemini → Groq chain)
     # ------------------------------------------------------------------
 
     async def _handle_text(
         self,
         messages: List[Dict[str, Any]],
         temperature: float,
-        max_tokens: int
+        max_tokens: int,
+        preferred_model: Optional[str] = None
     ) -> AsyncGenerator[str, None]:
-        # Show routing indicator on first chunk
-        if self.circuit_breaker.gemini_available() and self.gemini_api_key:
-            async for chunk in self._stream_gemini_text(messages, temperature, max_tokens):
+        # Filter empty messages to prevent API errors
+        clean_messages = [
+            m for m in messages if (isinstance(m.get("content"), str) and m.get("content").strip()) or isinstance(m.get("content"), list)
+        ]
+        if not clean_messages:
+            clean_messages = messages
+
+        # If user explicitly picked a Gemini model from the picker
+        if preferred_model and preferred_model in GEMINI_TEXT_MODELS:
+            yielded_gemini = False
+            if self.circuit_breaker.gemini_available() and self.gemini_api_key:
+                async for chunk in self._stream_gemini_text(clean_messages, temperature, max_tokens, preferred_model=preferred_model):
+                    yield chunk
+                    yielded_gemini = True
+            if not yielded_gemini:
+                yield "*[Gemini unavailable — auto-switched to Groq LPU fallback]*\n\n"
+                async for chunk in self._stream_groq_text(clean_messages, temperature, max_tokens):
+                    yield chunk
+            return
+
+        # 1. AUTO MODE & GROQ: Ultra-fast Groq LPU primary (sub-second TTFT, 1-2s completion)
+        yielded_groq = False
+        if self.groq_client:
+            async for chunk in self._stream_groq_text(clean_messages, temperature, max_tokens, preferred_model=preferred_model):
                 yield chunk
-        else:
-            # Gemini blocked → Groq
-            remaining = self.circuit_breaker.seconds_remaining
-            if remaining > 0:
-                yield f"*[Auto-switched to Groq Qwen fallback — Gemini quota resets in ~{remaining}s]*\n\n"
-            async for chunk in self._stream_groq_text(messages, temperature, max_tokens):
+                yielded_groq = True
+
+        # 2. Seamless fallback to Gemini if Groq is unavailable or exhausted
+        if not yielded_groq and self.circuit_breaker.gemini_available() and self.gemini_api_key:
+            yield "*[Groq quota reached — auto-switched to Gemini fallback]*\n\n"
+            async for chunk in self._stream_gemini_text(clean_messages, temperature, max_tokens):
                 yield chunk
 
     async def _stream_gemini_text(
         self,
         messages: List[Dict[str, Any]],
         temperature: float,
-        max_tokens: int
+        max_tokens: int,
+        preferred_model: Optional[str] = None
     ) -> AsyncGenerator[str, None]:
         try:
             from google import genai
@@ -381,13 +401,17 @@ class IntelligentRouter:
 
             client = self._get_gemini_client()
             if not client:
-                raise RuntimeError("No Gemini API key configured.")
+                return
 
             system_instruction, contents = _to_gemini_contents(messages)
 
-            # Try each text model in order
-            last_error = None
-            for model_name in GEMINI_TEXT_MODELS:
+            # Order models with preferred first if applicable
+            candidate_models = list(GEMINI_TEXT_MODELS)
+            if preferred_model and preferred_model in candidate_models:
+                candidate_models.remove(preferred_model)
+                candidate_models.insert(0, preferred_model)
+
+            for model_name in candidate_models:
                 try:
                     response = await asyncio.get_event_loop().run_in_executor(
                         None,
@@ -402,63 +426,66 @@ class IntelligentRouter:
                         )
                     )
 
-                    # Stream chunks from the response iterator
+                    yielded_any = False
                     for chunk in response:
                         if chunk.text:
                             yield chunk.text
-                    return  # Success
+                            yielded_any = True
+                    if yielded_any:
+                        return  # Success!
 
                 except Exception as model_err:
                     err_str = str(model_err)
                     if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
                         retry_secs = _extract_retry_seconds(model_err)
                         self.circuit_breaker.report_429(retry_secs)
-                        last_error = model_err
-                        break  # Fall through to Groq
-                    elif "503" in err_str or "overloaded" in err_str.lower():
-                        last_error = model_err
-                        continue  # Try next model
-                    else:
-                        last_error = model_err
-                        continue
+                    # Continue loop to try next Gemini model in the chain
+                    continue
 
-            # Fall through to Groq
-            if self.circuit_breaker.seconds_remaining > 0:
-                remaining = self.circuit_breaker.seconds_remaining
-                yield f"*[Auto-switched to Groq Qwen — Gemini quota resets in ~{remaining}s]*\n\n"
-            elif last_error:
-                yield f"*[Gemini unavailable ({type(last_error).__name__}) — switching to Groq Qwen]*\n\n"
-
-            async for chunk in self._stream_groq_text(messages, temperature, max_tokens):
-                yield chunk
-
-        except Exception as e:
-            yield f"\n\n[Router Error]: {str(e)}\n"
+        except Exception:
+            return  # Let caller failover to Groq
 
     async def _stream_groq_text(
         self,
         messages: List[Dict[str, Any]],
         temperature: float,
-        max_tokens: int
+        max_tokens: int,
+        preferred_model: Optional[str] = None
     ) -> AsyncGenerator[str, None]:
         if not self.groq_client:
             yield "⚠️ No Groq API key configured. Please add GROQ_API_KEY to .env as a fallback.\n"
             return
 
-        try:
-            response = await self.groq_client.chat.completions.create(
-                model=GROQ_FALLBACK_MODEL,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                stream=True,
-            )
-            async for chunk in response:
-                content = chunk.choices[0].delta.content
-                if content:
-                    yield content
-        except Exception as e:
-            yield f"\n\n[Groq Fallback Error]: {str(e)}\n"
+        # Prepare candidate models with preferred first
+        candidate_models = list(GROQ_TEXT_MODELS)
+        if preferred_model and preferred_model in candidate_models:
+            candidate_models.remove(preferred_model)
+            candidate_models.insert(0, preferred_model)
+
+        last_error = None
+        for model_name in candidate_models:
+            try:
+                response = await self.groq_client.chat.completions.create(
+                    model=model_name,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    stream=True,
+                )
+                yielded_any = False
+                async for chunk in response:
+                    content = chunk.choices[0].delta.content
+                    if content:
+                        yield content
+                        yielded_any = True
+                if yielded_any:
+                    return  # Success!
+            except Exception as e:
+                last_error = e
+                continue  # Try next Groq model in failover chain
+
+        if last_error:
+            yield f"\n\n[All models temporarily exhausted]: {str(last_error)}\n"
 
     # ------------------------------------------------------------------
     # OCR / VISION — Gemini multimodal

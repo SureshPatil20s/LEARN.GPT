@@ -15,6 +15,9 @@ from server.app.api.auth import router as auth_router
 from server.app.api.chat import router as chat_router
 from server.app.api.documents import router as doc_router
 from server.app.api.voice import router as voice_router
+from server.app.api.personas_prompts import router as personas_prompts_router
+from server.app.api.memory import router as memory_router
+from server.app.api.interviews import router as interviews_router
 
 # Auto-create tables (SQLite or PostgreSQL)
 Base.metadata.create_all(bind=engine)
@@ -39,6 +42,9 @@ app.include_router(auth_router, prefix=settings.API_V1_STR)
 app.include_router(chat_router, prefix=settings.API_V1_STR)
 app.include_router(doc_router, prefix=settings.API_V1_STR)
 app.include_router(voice_router, prefix=settings.API_V1_STR)
+app.include_router(personas_prompts_router, prefix=settings.API_V1_STR)
+app.include_router(memory_router, prefix=settings.API_V1_STR)
+app.include_router(interviews_router, prefix=settings.API_V1_STR)
 
 
 @app.get("/health")

@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 import json
 
 from server.app.db.session import get_db
-from server.app.models.entities import User, Conversation, Message, ImageGenerationLog, Document, DocumentChunk
+from server.app.models.entities import User, Conversation, Message, ImageGenerationLog, Document, DocumentChunk, Memory
 from server.app.schemas.schemas import (
     ConversationResponse,
     ConversationCreate,
@@ -28,6 +28,7 @@ from server.app.schemas.schemas import (
 from server.app.core.security import get_current_user
 from server.app.services.llm_service import hosted_llm
 from server.app.services.rag_service import rag_service
+from server.app.services.web_search import build_web_context
 from server.app.core.config import settings
 
 router = APIRouter(tags=["Chat & Conversations"])
@@ -68,7 +69,9 @@ def create_conversation(
     conv = Conversation(
         user_id=current_user.id,
         title=title,
-        model=model_name
+        model=model_name,
+        system_prompt=conv_in.system_prompt,
+        persona_id=conv_in.persona_id
     )
     db.add(conv)
     db.commit()
@@ -197,6 +200,40 @@ async def _handle_message_stream(
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
+    # 0. Enforce Daily Chat Request Limit (Strictly 20 chat requests per user per day)
+    today_start = datetime.combine(datetime.now(timezone.utc).date(), datetime.min.time()).replace(tzinfo=timezone.utc)
+    today_requests_count = db.query(Message).join(Conversation).filter(
+        Conversation.user_id == current_user.id,
+        Message.role == "user",
+        Message.created_at >= today_start
+    ).count()
+
+    if today_requests_count >= settings.DAILY_CHAT_REQUEST_LIMIT:
+        limit_msg = (
+            f"⚠️ **Daily Chat Request Limit Reached ({settings.DAILY_CHAT_REQUEST_LIMIT}/{settings.DAILY_CHAT_REQUEST_LIMIT})**\n\n"
+            f"You have used your maximum daily allocation of **{settings.DAILY_CHAT_REQUEST_LIMIT} chat queries** for today.\n\n"
+            f"- **Daily Allowance:** {settings.DAILY_CHAT_REQUEST_LIMIT} requests / user\n"
+            f"- **Used Today:** {today_requests_count} / {settings.DAILY_CHAT_REQUEST_LIMIT}\n"
+            f"- **Reset Schedule:** Midnight UTC (00:00 UTC)\n\n"
+            f"💡 *To ensure fair resource distribution across all {settings.MAX_TOTAL_USERS} users, limits reset every 24 hours. "
+            f"Please return tomorrow for a fresh batch of {settings.DAILY_CHAT_REQUEST_LIMIT} AI requests!*"
+        )
+
+        async def limit_generator():
+            yield f"data: {json.dumps({'delta': limit_msg})}\n\n"
+            asst_msg = Message(
+                conversation_id=conversation_id,
+                role="assistant",
+                content=limit_msg,
+                model=conv.model,
+                sources=None
+            )
+            db.add(asst_msg)
+            db.commit()
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(limit_generator(), media_type="text/event-stream")
+
     # 1. Save User Message
     stored_user_content = msg_in.content
     if msg_in.attached_filename:
@@ -219,19 +256,22 @@ async def _handle_message_stream(
         conv.title = snippet[:32] + "..." if len(snippet) > 32 else snippet
         db.commit()
 
-    # 2. Check RAG Context if requested
+    # 2. Check RAG Context (Runs if use_rag is True OR if an attached file/document is detected)
     rag_context = ""
     sources_list = []
     sources_json = None
-    if msg_in.use_rag:
-        # Determine attached filename: from request schema or extracted from content tags
-        effective_filename = msg_in.attached_filename
-        if not effective_filename:
-            import re
-            match = re.search(r'\[Attached Document:\s*([^\]]+)\]', msg_in.content)
-            if match:
-                effective_filename = match.group(1).strip()
 
+    # Determine attached filename: from request schema or extracted from content tags
+    import re
+    effective_filename = msg_in.attached_filename
+    if not effective_filename:
+        match = re.search(r'\[Attached Document:\s*([^\]]+)\]', msg_in.content)
+        if match:
+            effective_filename = match.group(1).strip()
+
+    should_process_rag = bool(msg_in.use_rag or effective_filename)
+
+    if should_process_rag:
         # If user explicitly attached a document or mentioned a filename, prioritize it
         search_query = msg_in.content
         if effective_filename:
@@ -246,16 +286,29 @@ async def _handle_message_stream(
         ])
 
         if effective_filename:
-            # Explicitly load all chunks of the attached document
+            # 1. First look for a document attached to this specific conversation
             target_doc = db.query(Document).filter(
                 Document.user_id == current_user.id,
+                Document.conversation_id == conversation_id,
                 Document.filename.ilike(f"%{effective_filename}%")
             ).order_by(Document.created_at.desc()).first()
+            # 2. If not found, look across global documents
+            if not target_doc:
+                target_doc = db.query(Document).filter(
+                    Document.user_id == current_user.id,
+                    Document.filename.ilike(f"%{effective_filename}%")
+                ).order_by(Document.created_at.desc()).first()
         elif is_generic_doc_query:
-            # Default to the user's latest uploaded document
+            # First check for any document attached to this conversation
             target_doc = db.query(Document).filter(
-                Document.user_id == current_user.id
+                Document.user_id == current_user.id,
+                Document.conversation_id == conversation_id
             ).order_by(Document.created_at.desc()).first()
+            # If none attached to this conversation, default to latest global document
+            if not target_doc:
+                target_doc = db.query(Document).filter(
+                    Document.user_id == current_user.id
+                ).order_by(Document.created_at.desc()).first()
         else:
             target_doc = None
 
@@ -266,31 +319,74 @@ async def _handle_message_stream(
 
             if doc_chunks:
                 context_blocks = []
-                sources_list = []
                 for c in doc_chunks:
                     context_blocks.append(
                         f"[Document: {target_doc.filename}, Page {c.page_number}]:\n{c.content}"
                     )
-                    sources_list.append({
-                        "filename": target_doc.filename,
-                        "page": c.page_number,
-                        "similarity": 100.0,
-                        "snippet": c.content[:160] + "..." if len(c.content) > 160 else c.content
-                    })
                 rag_context = "\n\n".join(context_blocks)
+
+                # Return clean, consolidated citations by grouping unique pages
+                pages = sorted(list(set(c.page_number for c in doc_chunks if c.page_number)))
+                pages_str = f"Pages {pages[0]}–{pages[-1]}" if len(pages) > 1 else f"Page {pages[0]}" if pages else "Document"
+                sources_list = [{
+                    "filename": target_doc.filename,
+                    "page": pages_str,
+                    "page_number": pages[0] if pages else 1,
+                    "similarity": 100.0,
+                    "score": 1.0,
+                    "snippet": f"{target_doc.filename} ({len(doc_chunks)} sections, {pages_str})"
+                }]
                 sources_json = json.dumps(sources_list, ensure_ascii=False)
 
         # If not satisfied by target_doc, perform semantic hybrid vector search
-        if not rag_context:
+        if not rag_context and msg_in.use_rag:
             rag_context, sources_list = rag_service.search_user_documents(
                 db, current_user.id, search_query, top_k=12
             )
             if sources_list:
+                for s in sources_list:
+                    s["score"] = s.get("similarity", 100.0) / 100.0
+                    s["page_number"] = s.get("page", 1)
                 sources_json = json.dumps(sources_list, ensure_ascii=False)
 
     # 3. Assemble Prompt Messages History
     history = db.query(Message).filter(Message.conversation_id == conversation_id).order_by(Message.created_at).all()
-    system_text = current_user.system_prompt or "You are LEARN.GPT, a knowledgeable, concise, and helpful AI assistant."
+    # Prioritize conversation's custom persona/character system prompt over general user setting
+    system_text = conv.system_prompt or current_user.system_prompt or "You are LEARN.GPT, a knowledgeable, concise, and helpful AI assistant."
+    if msg_in.system_prompt and msg_in.system_prompt.strip():
+        system_text = f"{msg_in.system_prompt.strip()}\n\n{system_text}"
+
+    # 3a. Inject Persistent Cross-Chat Memory (if enabled)
+    if msg_in.use_memory:
+        active_memories = db.query(Memory).filter(
+            Memory.user_id == current_user.id,
+            Memory.is_active == True
+        ).order_by(Memory.created_at.desc()).limit(15).all()
+
+        if active_memories:
+            mem_items = "\n".join(f"- {m.content}" for m in active_memories)
+            system_text += (
+                f"\n\n[PERSISTENT CROSS-CHAT MEMORY & USER CONTEXT]:\n{mem_items}\n"
+                "(INSTRUCTION: The user has set these persistent facts, preferences, and context across all their conversations. "
+                "Respect and adapt your style, format, and answers accordingly.)"
+            )
+
+    # 3b. Real-Time Web Walkthrough & Search Activity
+    web_context, web_sources = await build_web_context(msg_in.content, use_web_search=bool(msg_in.use_web_search))
+    if web_context:
+        system_text += f"\n\n{web_context}"
+        for ws in web_sources:
+            sources_list.append({
+                "filename": ws.get("title") or ws.get("url", "Web"),
+                "page": "Web",
+                "page_number": 1,
+                "similarity": 98.0,
+                "score": 0.98,
+                "snippet": ws.get("snippet") or ws.get("url", "")
+            })
+        if sources_list and not sources_json:
+            sources_json = json.dumps(sources_list, ensure_ascii=False)
+
     if rag_context:
         num_docs = len(set(s["filename"] for s in sources_list))
         system_text += (
@@ -304,7 +400,8 @@ async def _handle_message_stream(
 
     llm_messages = [{"role": "system", "content": system_text}]
     for m in history[-8:]:  # Sliding window of last 8 turns
-        llm_messages.append({"role": m.role, "content": m.content})
+        if m.content and m.content.strip():
+            llm_messages.append({"role": m.role, "content": m.content})
 
     chosen_model = msg_in.model or conv.model or current_user.default_model or settings.DEFAULT_MODEL
 
@@ -321,15 +418,15 @@ async def _handle_message_stream(
             ImageGenerationLog.created_at >= today_start
         ).count()
 
-        if today_count >= 10:
+        if today_count >= settings.DAILY_IMAGE_REQUEST_LIMIT:
             limit_msg = (
-                "⚠️ **Daily Image Generation Limit Reached (10/10)**\n\n"
-                "You have used your maximum allowance of **10 AI image generations** for today.\n\n"
-                "- **Daily Quota:** 10 images / user\n"
-                f"- **Used Today:** {today_count} / 10\n"
+                f"⚠️ **Daily Image Generation Limit Reached ({settings.DAILY_IMAGE_REQUEST_LIMIT}/{settings.DAILY_IMAGE_REQUEST_LIMIT})**\n\n"
+                f"You have used your maximum allowance of **{settings.DAILY_IMAGE_REQUEST_LIMIT} AI image generations** for today.\n\n"
+                f"- **Daily Quota:** {settings.DAILY_IMAGE_REQUEST_LIMIT} images / user\n"
+                f"- **Used Today:** {today_count} / {settings.DAILY_IMAGE_REQUEST_LIMIT}\n"
                 "- **Quota Reset:** Midnight UTC (00:00 UTC)\n\n"
-                "💡 *You can continue unlimited text conversations with our language models (`Gemini 2.0 Flash`, `Gemini 2.5 Flash Lite`, `Qwen 3.8 Groq`), "
-                "or return tomorrow for 10 fresh image generation credits!*"
+                "💡 *You can continue text conversations with our language models, "
+                f"or return tomorrow for {settings.DAILY_IMAGE_REQUEST_LIMIT} fresh image generation credits!*"
             )
 
             async def limit_generator():
@@ -368,14 +465,19 @@ async def _handle_message_stream(
         async for chunk in hosted_llm.stream_chat_completion(
             messages=llm_messages,
             model=chosen_model,
-            temperature=current_user.temperature or 0.7,
+            temperature=msg_in.temperature if msg_in.temperature is not None else (current_user.temperature or 0.7),
             image_data=msg_in.image_data or None
         ):
             full_content.append(chunk)
             # Send text delta
             yield f"data: {json.dumps({'delta': chunk})}\n\n"
 
-        complete_response = "".join(full_content)
+        complete_response = "".join(full_content).strip()
+        if not complete_response:
+            fallback_note = "⚠️ No response was received from the upstream AI provider. Please try sending your query again or switch to another model."
+            yield f"data: {json.dumps({'delta': fallback_note})}\n\n"
+            complete_response = fallback_note
+
         # Save assistant message into DB
         asst_msg = Message(
             conversation_id=conversation_id,

@@ -1,4 +1,20 @@
-import { AuthResponse, Conversation, DocumentItem, Message, ModelOption, RagSource, User } from '@/types';
+import { 
+  AuthResponse, 
+  Conversation, 
+  DocumentItem, 
+  Message, 
+  ModelOption, 
+  Persona, 
+  PromptTemplate, 
+  RagSource, 
+  User, 
+  MemoryItem,
+  InterviewSession,
+  InterviewConfig,
+  InterviewTurn,
+  TurnAnswerResponse,
+  CodingExecutionResponse
+} from '@/types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
@@ -148,10 +164,20 @@ export async function getConversations(): Promise<Conversation[]> {
   }
 }
 
-export async function createConversation(title = 'New Chat', model = 'auto'): Promise<Conversation> {
+export async function createConversation(
+  title = 'New Chat',
+  model = 'auto',
+  systemPrompt?: string,
+  personaId?: string
+): Promise<Conversation> {
   return request<Conversation>('/conversations', {
     method: 'POST',
-    body: JSON.stringify({ title, model }),
+    body: JSON.stringify({
+      title,
+      model,
+      system_prompt: systemPrompt,
+      persona_id: personaId
+    }),
   });
 }
 
@@ -189,7 +215,7 @@ export async function getDocuments(): Promise<DocumentItem[]> {
   }
 }
 
-export async function uploadDocument(file: File): Promise<DocumentItem> {
+export async function uploadDocument(file: File, conversationId?: string): Promise<DocumentItem> {
   const token = getToken();
   const formData = new FormData();
   formData.append('file', file);
@@ -199,7 +225,11 @@ export async function uploadDocument(file: File): Promise<DocumentItem> {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_BASE}/documents/upload`, {
+  const url = conversationId
+    ? `${API_BASE}/documents/upload?conversation_id=${encodeURIComponent(conversationId)}`
+    : `${API_BASE}/documents/upload`;
+
+  const res = await fetch(url, {
     method: 'POST',
     headers,
     body: formData,
@@ -261,11 +291,98 @@ export async function transcribeAudio(audioBlob: Blob, language = 'en-US'): Prom
   return res.json();
 }
 
+// Personas & Agents API
+export async function getPersonas(): Promise<Persona[]> {
+  const token = getToken();
+  if (!token) return [];
+  try {
+    return await request<Persona[]>('/personas');
+  } catch {
+    return [];
+  }
+}
+
+export async function createPersona(data: {
+  name: string;
+  avatar?: string;
+  description?: string;
+  system_prompt: string;
+}): Promise<Persona> {
+  return request<Persona>('/personas', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deletePersona(id: string): Promise<void> {
+  await request<void>(`/personas/${id}`, { method: 'DELETE' });
+}
+
+// Prompt Library API
+export async function getPromptTemplates(): Promise<PromptTemplate[]> {
+  const token = getToken();
+  if (!token) return [];
+  try {
+    return await request<PromptTemplate[]>('/prompts');
+  } catch {
+    return [];
+  }
+}
+
+export async function createPromptTemplate(data: {
+  title: string;
+  category?: string;
+  description?: string;
+  template: string;
+}): Promise<PromptTemplate> {
+  return request<PromptTemplate>('/prompts', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deletePromptTemplate(id: string): Promise<void> {
+  await request<void>(`/prompts/${id}`, { method: 'DELETE' });
+}
+
+// Persistent Cross-Chat Memory APIs
+export async function getMemories(): Promise<MemoryItem[]> {
+  const token = getToken();
+  if (!token) return [];
+  try {
+    return await request<MemoryItem[]>('/memory');
+  } catch {
+    return [];
+  }
+}
+
+export async function createMemory(content: string, category: string = 'general'): Promise<MemoryItem> {
+  return request<MemoryItem>('/memory', {
+    method: 'POST',
+    body: JSON.stringify({ content, category }),
+  });
+}
+
+export async function toggleMemory(id: string): Promise<MemoryItem> {
+  return request<MemoryItem>(`/memory/${id}/toggle`, {
+    method: 'PATCH',
+  });
+}
+
+export async function deleteMemory(id: string): Promise<void> {
+  await request<void>(`/memory/${id}`, { method: 'DELETE' });
+}
+
+export async function clearAllMemories(): Promise<void> {
+  await request<void>('/memory', { method: 'DELETE' });
+}
+
 export const FALLBACK_MODELS: ModelOption[] = [
-  { id: 'auto', name: '🤖 Auto (Gemini + Groq)', provider: 'Smart Router', description: 'Automatically uses Gemini for all tasks; Groq Qwen as fallback on rate limit', is_default: true },
-  { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash', provider: 'Google AI', description: 'Fast, up-to-date, multimodal reasoning with real-world grounding' },
-  { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash Lite', provider: 'Google AI', description: 'Ultra-fast lightweight Gemini model for simple queries' },
+  { id: 'auto', name: '🤖 Auto (Gemini + Groq)', provider: 'Smart Router', description: 'Automatically uses Gemini for all tasks; Groq as fallback on rate limit', is_default: true },
+  { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash', provider: 'Google AI', description: 'Fast multimodal reasoning with real-world grounding' },
+  { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash Lite', provider: 'Google AI', description: 'Ultra-fast lightweight Gemini model for rapid queries' },
   { id: 'qwen/qwen3.8-27b', name: 'Qwen 3.8 27B (Groq)', provider: 'Groq', description: 'Advanced reasoning & multilingual — Groq LPU speed' },
+  { id: 'openai/gpt-oss-120b', name: 'GPT-OSS 120B (Groq)', provider: 'Groq', description: 'High-capacity open reasoning model — Groq LPU speed' },
   { id: 'flux-image-gen', name: '🎨 AI Image Generator', provider: 'Gemini / Pollinations', description: 'Photorealistic image generation with automatic fallback' },
   { id: 'gemini-vision', name: '👁️ Vision & OCR (Gemini)', provider: 'Google AI', description: 'Read & extract text from images, scans, and diagrams via Gemini' },
 ];
@@ -285,8 +402,13 @@ export async function streamMessage({
   content,
   model,
   useRag,
+  useWebSearch,
+  useMemory,
+  temperature,
+  maxTokens,
   imageData,
   attachedFilename,
+  systemPrompt,
   onChunk,
   onSources,
   onDone,
@@ -296,8 +418,13 @@ export async function streamMessage({
   content: string;
   model: string;
   useRag: boolean;
+  useWebSearch?: boolean;
+  useMemory?: boolean;
+  temperature?: number;
+  maxTokens?: number;
   imageData?: string;
   attachedFilename?: string;
+  systemPrompt?: string;
   onChunk: (chunk: string) => void;
   onSources?: (sources: RagSource[]) => void;
   onDone: (fullContent: string) => void;
@@ -316,8 +443,13 @@ export async function streamMessage({
         content,
         model,
         use_rag: useRag,
+        use_web_search: useWebSearch,
+        use_memory: useMemory,
+        temperature,
+        max_tokens: maxTokens,
         image_data: imageData,
         attached_filename: attachedFilename,
+        system_prompt: systemPrompt,
       }),
     });
 
@@ -378,4 +510,91 @@ export async function streamMessage({
     onError(err instanceof Error ? err : new Error(String(err)));
   }
 }
+
+// ---------------------------------------------------------------------------
+// AI Interviewer APIs
+// ---------------------------------------------------------------------------
+
+export async function createInterviewSession(config: InterviewConfig): Promise<InterviewSession> {
+  return request<InterviewSession>('/interviews/sessions', {
+    method: 'POST',
+    body: JSON.stringify(config),
+  });
+}
+
+export async function startInterviewSession(sessionId: string): Promise<InterviewTurn> {
+  return request<InterviewTurn>(`/interviews/sessions/${sessionId}/start`, {
+    method: 'POST',
+  });
+}
+
+export async function getInterviewSession(sessionId: string): Promise<InterviewSession> {
+  return request<InterviewSession>(`/interviews/sessions/${sessionId}`);
+}
+
+export async function submitInterviewAnswer(
+  sessionId: string,
+  data: { turn_id: string; sequence_number: number; candidate_answer?: string; candidate_code?: string },
+  idempotencyKey?: string
+): Promise<TurnAnswerResponse> {
+  const headers: Record<string, string> = {};
+  if (idempotencyKey) {
+    headers['Idempotency-Key'] = idempotencyKey;
+  }
+  return request<TurnAnswerResponse>(`/interviews/sessions/${sessionId}/answer`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(data),
+  });
+}
+
+export async function skipInterviewTurn(sessionId: string): Promise<TurnAnswerResponse> {
+  return request<TurnAnswerResponse>(`/interviews/sessions/${sessionId}/skip`, {
+    method: 'POST',
+  });
+}
+
+export async function endInterviewSession(sessionId: string, reason?: string): Promise<InterviewSession> {
+  return request<InterviewSession>(`/interviews/sessions/${sessionId}/end`, {
+    method: 'POST',
+    body: JSON.stringify({ reason: reason || 'candidate_requested' }),
+  });
+}
+
+export async function getInterviewHistory(limit: number = 20): Promise<InterviewSession[]> {
+  return request<InterviewSession[]>(`/interviews/history?limit=${limit}`);
+}
+
+export async function executeCodingSolution(
+  code: string,
+  language: string = 'python',
+  turnId?: string,
+  testCases?: Array<Record<string, any>>
+): Promise<CodingExecutionResponse> {
+  return request<CodingExecutionResponse>('/interviews/coding/execute', {
+    method: 'POST',
+    body: JSON.stringify({
+      code,
+      language,
+      turn_id: turnId,
+      test_cases: testCases
+    }),
+  });
+}
+
+export async function downloadInterviewReportMarkdown(sessionId: string): Promise<string> {
+  const token = getToken();
+  const res = await fetch(`${API_BASE}/interviews/sessions/${sessionId}/report.md`, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+  if (!res.ok) {
+    throw new Error('Failed to download interview report');
+  }
+  return res.text();
+}
+
+
+
 

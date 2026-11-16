@@ -62,11 +62,11 @@ export default function AuthModal() {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs">
-      <div className="relative w-full max-w-md bg-[#161616] border border-zinc-800 rounded-2xl p-6 shadow-2xl animate-fade-in">
+      <div className="relative w-full max-w-md bg-white dark:bg-[#161616] border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-2xl animate-fade-in">
         {/* Close button */}
         <button
           onClick={() => setAuthModalOpen(false)}
-          className="absolute right-4 top-4 p-1 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition"
+          className="absolute right-4 top-4 p-1 text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
         >
           <X className="w-5 h-5" />
         </button>
@@ -76,16 +76,16 @@ export default function AuthModal() {
           <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-black font-black text-lg mx-auto mb-3 shadow-md">
             L
           </div>
-          <h2 className="text-xl font-bold text-white">
+          <h2 className="text-xl font-bold text-zinc-900 dark:text-white">
             {tab === 'signin' ? 'Welcome back' : 'Create your account'}
           </h2>
-          <p className="text-xs text-zinc-400 mt-1">
+          <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1">
             Access your persistent chats, Groq hosted models & RAG documents
           </p>
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex rounded-xl bg-[#202020] p-1 mb-5 border border-zinc-800">
+        <div className="flex rounded-xl bg-zinc-100 dark:bg-[#202020] p-1 mb-5 border border-zinc-200 dark:border-zinc-800">
           <button
             type="button"
             onClick={() => {
@@ -93,7 +93,7 @@ export default function AuthModal() {
               setError(null);
             }}
             className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition ${
-              tab === 'signin' ? 'bg-zinc-800 text-white shadow-xs' : 'text-zinc-400 hover:text-white'
+              tab === 'signin' ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-xs' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
             }`}
           >
             Sign in
@@ -105,7 +105,7 @@ export default function AuthModal() {
               setError(null);
             }}
             className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition ${
-              tab === 'signup' ? 'bg-zinc-800 text-white shadow-xs' : 'text-zinc-400 hover:text-white'
+              tab === 'signup' ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-xs' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
             }`}
           >
             Create account
@@ -114,7 +114,7 @@ export default function AuthModal() {
 
         {/* Error Alert */}
         {error && (
-          <div className="mb-4 p-3 rounded-xl bg-rose-950/40 border border-rose-800/60 text-xs text-rose-300 flex items-center gap-2">
+          <div className="mb-4 p-3 rounded-xl bg-rose-100 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800/60 text-xs text-rose-800 dark:text-rose-300 flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{error}</span>
           </div>
@@ -126,7 +126,7 @@ export default function AuthModal() {
             type="button"
             onClick={handleGoogleSignIn}
             disabled={isLoading}
-            className="w-full flex items-center justify-center gap-3 px-4 py-2.5 rounded-xl border border-zinc-700 bg-white hover:bg-zinc-100 text-zinc-900 font-medium text-xs transition shadow-sm cursor-pointer active:scale-[0.99]"
+            className="w-full flex items-center justify-center gap-3 px-4 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white hover:bg-zinc-50 dark:hover:bg-zinc-100 text-zinc-900 font-medium text-xs transition shadow-sm cursor-pointer active:scale-[0.99]"
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24">
               <path
@@ -151,56 +151,56 @@ export default function AuthModal() {
         </div>
 
         <div className="flex items-center my-4">
-          <div className="flex-1 border-t border-zinc-800" />
+          <div className="flex-1 border-t border-zinc-200 dark:border-zinc-800" />
           <span className="px-3 text-[11px] text-zinc-500 uppercase tracking-wider">or</span>
-          <div className="flex-1 border-t border-zinc-800" />
+          <div className="flex-1 border-t border-zinc-200 dark:border-zinc-800" />
         </div>
 
         {/* Email & Password Form */}
         <form onSubmit={handleSubmit} className="space-y-3">
           {tab === 'signup' && (
             <div>
-              <label className="block text-xs text-zinc-400 mb-1">Full Name</label>
+              <label className="block text-xs text-zinc-600 dark:text-zinc-400 mb-1">Full Name</label>
               <div className="relative">
-                <UserIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+                <UserIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 dark:text-zinc-500" />
                 <input
                   type="text"
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Your Name"
-                  className="w-full bg-[#1c1c1c] border border-zinc-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 transition"
+                  className="w-full bg-zinc-50 dark:bg-[#1c1c1c] border border-zinc-200 dark:border-zinc-800 rounded-xl pl-9 pr-3 py-2 text-xs text-zinc-900 dark:text-white focus:outline-none focus:border-emerald-500 transition"
                 />
               </div>
             </div>
           )}
 
           <div>
-            <label className="block text-xs text-zinc-400 mb-1">Email Address</label>
+            <label className="block text-xs text-zinc-600 dark:text-zinc-400 mb-1">Email Address</label>
             <div className="relative">
-              <Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+              <Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 dark:text-zinc-500" />
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
-                className="w-full bg-[#1c1c1c] border border-zinc-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 transition"
+                className="w-full bg-zinc-50 dark:bg-[#1c1c1c] border border-zinc-200 dark:border-zinc-800 rounded-xl pl-9 pr-3 py-2 text-xs text-zinc-900 dark:text-white focus:outline-none focus:border-emerald-500 transition"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs text-zinc-400 mb-1">Password</label>
+            <label className="block text-xs text-zinc-600 dark:text-zinc-400 mb-1">Password</label>
             <div className="relative">
-              <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+              <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 dark:text-zinc-500" />
               <input
                 type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full bg-[#1c1c1c] border border-zinc-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 transition"
+                className="w-full bg-zinc-50 dark:bg-[#1c1c1c] border border-zinc-200 dark:border-zinc-800 rounded-xl pl-9 pr-3 py-2 text-xs text-zinc-900 dark:text-white focus:outline-none focus:border-emerald-500 transition"
               />
             </div>
           </div>
@@ -215,13 +215,13 @@ export default function AuthModal() {
         </form>
 
         {/* Quick Demo Pre-fill */}
-        <div className="mt-5 pt-4 border-t border-zinc-800/80 text-center">
+        <div className="mt-5 pt-4 border-t border-zinc-200 dark:border-zinc-800/80 text-center">
           <div className="text-[11px] text-zinc-500 mb-2">1-Click Test Credentials:</div>
           <div className="flex gap-2 justify-center">
             <button
               type="button"
               onClick={() => fillQuickDemo('test@example.com', 'password123')}
-              className="px-2.5 py-1 text-[11px] rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition"
+              className="px-2.5 py-1 text-[11px] rounded-lg bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 transition"
             >
               Fill test@example.com
             </button>

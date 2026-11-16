@@ -14,8 +14,10 @@ import io
 import time
 import wave
 import uuid
+import logging
 from typing import Dict, Any, List, Optional
 
+from server.app.core.config import settings
 from server.app.voice import (
     AudioFormat,
     AudioChunk,
@@ -65,6 +67,33 @@ class VoiceService:
             }
 
         session_id = session_id or f"voice_session_{uuid.uuid4().hex[:8]}"
+
+        # 0. Fast Primary: Groq Hosted Whisper (sub-second LPU transcription)
+        if not use_mock and settings.GROQ_API_KEY:
+            try:
+                from groq import Groq
+                groq_client = Groq(api_key=settings.GROQ_API_KEY)
+                t_start = time.time()
+                whisper_res = groq_client.audio.transcriptions.create(
+                    file=("mic_audio.wav", audio_bytes),
+                    model="whisper-large-v3-turbo",
+                    response_format="verbose_json"
+                )
+                text = (getattr(whisper_res, "text", "") or "").strip()
+                duration = getattr(whisper_res, "duration", None) or (time.time() - t_start)
+                if text:
+                    return {
+                        "text": text,
+                        "session_id": session_id,
+                        "duration_s": round(duration, 2),
+                        "chunks_processed": 1,
+                        "duplicates_suppressed": 0,
+                        "interims_reconciled": 0,
+                        "segments": [],
+                        "has_errors": False
+                    }
+            except Exception as whisper_err:
+                logging.getLogger(__name__).warning(f"Groq Whisper transcription fallback: {whisper_err}")
 
         # 1. Parse WAV container or assume 16kHz 16-bit mono PCM
         pcm_data: bytes

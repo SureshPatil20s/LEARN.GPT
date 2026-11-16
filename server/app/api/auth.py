@@ -71,6 +71,14 @@ def register_user(user_in: UserCreate, db: Session = Depends(get_db)):
             detail="An account with this email already exists. Please log in."
         )
 
+    # Enforce maximum 10 registered users capacity
+    current_users_count = db.query(User).count()
+    if current_users_count >= settings.MAX_TOTAL_USERS:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Platform capacity limit reached ({settings.MAX_TOTAL_USERS}/{settings.MAX_TOTAL_USERS} users). New registrations are currently closed."
+        )
+
     user = User(
         email=user_in.email.lower(),
         name=user_in.name or user_in.email.split("@")[0].title(),
@@ -93,6 +101,24 @@ def register_user(user_in: UserCreate, db: Session = Depends(get_db)):
 @router.post("/guest", response_model=Token)
 def guest_login(db: Session = Depends(get_db)):
     """Initializes or returns a seamless guest session for instant access without credentials."""
+    # Check if a reusable guest user already exists to keep user count below 10
+    existing_guest = db.query(User).filter(User.provider == "guest").first()
+    if existing_guest:
+        access_token = create_access_token(existing_guest.id)
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": existing_guest
+        }
+
+    # Enforce maximum 10 users capacity
+    current_users_count = db.query(User).count()
+    if current_users_count >= settings.MAX_TOTAL_USERS:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Platform user capacity limit reached ({settings.MAX_TOTAL_USERS}/{settings.MAX_TOTAL_USERS} users)."
+        )
+
     guest_uid = uuid.uuid4().hex[:8]
     user = User(
         email=f"guest_{guest_uid}@learn-gpt.guest",
@@ -181,6 +207,14 @@ def google_auth(auth_in: GoogleAuthRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == email).first()
 
     if not user:
+        # Enforce maximum 10 registered users capacity
+        current_users_count = db.query(User).count()
+        if current_users_count >= settings.MAX_TOTAL_USERS:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Platform user capacity limit reached ({settings.MAX_TOTAL_USERS}/{settings.MAX_TOTAL_USERS} users). Contact administrator."
+            )
+
         user = User(
             email=email,
             name=name,

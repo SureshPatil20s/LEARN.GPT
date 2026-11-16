@@ -34,7 +34,19 @@ python -m uvicorn server.app.main:app --host 0.0.0.0 --port 8000 --reload
 - **Interactive Swagger Docs:** http://localhost:8000/docs
 - **Health Check:** http://localhost:8000/health
 
-#### Step 2: Start the Next.js Frontend
+> **Troubleshooting `[WinError 10013]` (Port 8000 already in use):**
+> If another background python or uvicorn instance is already bound to port 8000, run in PowerShell:
+> ```powershell
+> Get-Process -Id (Get-NetTCPConnection -LocalPort 8000).OwningProcess | Stop-Process -Force
+> ```
+
+#### Step 2: Database Migrations (Optional / Initial Setup)
+To apply the database schema via Alembic:
+```bash
+alembic upgrade head
+```
+
+#### Step 3: Start the Next.js Frontend
 Open a second terminal, navigate into the `client` directory, and start the development server:
 ```bash
 cd client
@@ -140,12 +152,37 @@ HF_TOKEN=hf_your_token_here
 - **Guest Mode:** Instant access without login; chats are ephemeral and not persisted.
 - **Persistent Storage:** Registered users get cross-device conversation history.
 
+### 5. AI Interview Simulator (Optional & User-Controlled)
+- **Multi-Role Simulation:** Technical (C, Python, Java, DSA, OS, DBMS, Networks, ML), Coding challenges with starter code, HR/Behavioral (STAR method), Project & Resume Defense, University Viva, and Campus Placement.
+- **Interactive State Machine:** One question at a time, candidate response capture (text or Whisper speech-to-text dictation), live countdown timer, and sequence progression.
+- **Comprehensive Rubric Evaluation:** Overall score (0–100), dimensional scoring (Technical Accuracy, Communication, Problem Solving, Depth of Knowledge), executive verdict, strengths, knowledge gaps, targeted study roadmap, and **Teach-After-Interview** model answers.
+- **User-Controlled Visibility:** The Interviewer button is **optional** — users decide whether to display it via **Settings (⚙️) → Tools & Capabilities → AI Interview Simulator** toggle.
+
 ---
 
 ## 🧪 Testing & Verification
 
 ```bash
+# 1. Main End-to-End Chat & Multimodal Test:
 python test_phase3_e2e.py
+
+# 2. AI Interviewer Stage 1 (Core Lifecycle & State Machine):
+python test_interview_smoke.py
+
+# 3. AI Interviewer Stage 2 (Adaptive Probing & Dynamic Difficulty):
+python test_stage2_adaptive.py
+
+# 4. AI Interviewer Stage 3 (Track Rubrics & Specialized Modes):
+python test_stage3_tracks.py
+
+# 5. AI Interviewer Stage 4 (AST Secure Isolated Coding Sandbox):
+python test_stage4_coding_sandbox.py
+
+# 6. AI Interviewer Stage 5 (Teach-Back, Spaced Repetition & Report Export):
+python test_stage5_teach_back_report.py
+
+# 7. Audio & Voice Transcription Pipeline Test:
+python test_voice_pipeline.py
 ```
 
 Test coverage:
@@ -157,6 +194,12 @@ Test coverage:
 - `✓ Real-time SSE Chat Streaming with RAG Citations`
 - `✓ Free Image Generation (FLUX.1-schnell / Pollinations fallback)`
 - `✓ Free Vision & OCR (GPT OSS 120B Vision)`
+- `✓ AI Interviewer Suite (Stages 1-5 Complete)`:
+  - `Stage 1`: Session lifecycle, durable idempotency, state machine & database schemas
+  - `Stage 2`: Adaptive intelligence, rolling difficulty scaling, contextual follow-up probing & Groq Whisper STT
+  - `Stage 3`: Specialized track personas (Technical, Coding, HR STAR, Behavioral, Viva Voce, Placement) with normalized 5-dimension rubrics
+  - `Stage 4`: AST security auditing, isolated ephemeral code execution sandbox & interactive test-runner
+  - `Stage 5`: Teach-After-Interview coaching, spaced repetition review timers, peer banding & markdown report download
 
 ---
 
@@ -167,29 +210,38 @@ LLM-XRAY_PROJECT/
 ├── client/                     # Next.js 16 + React 19 + TypeScript Frontend
 │   ├── src/
 │   │   ├── app/                # App router (page.tsx, layout.tsx, globals.css)
-│   │   ├── components/         # Sidebar, Navbar, ChatArea, ChatInput, Modals
+│   │   ├── components/         # Sidebar, Navbar, ChatArea, ChatInput, InterviewerModal, Modals
 │   │   │                       # GoogleOAuthWrapper (real Google sign-in)
-│   │   ├── context/            # AuthContext (JWT & session state)
-│   │   ├── lib/                # API client with SSE streaming reader
-│   │   └── types/              # Strict TypeScript interfaces
+│   │   ├── context/            # AuthContext (JWT & session state), ThemeContext
+│   │   ├── lib/                # API client (chat, voice, interviews), audioRecorder.ts
+│   │   └── types/              # Strict TypeScript interfaces (Session, Turn, Evaluation)
 │   ├── .env.local              # NEXT_PUBLIC_API_URL, NEXT_PUBLIC_GOOGLE_CLIENT_ID
 │   └── package.json
 │
 ├── server/                     # FastAPI Python Backend
+│   ├── alembic/                # Database migrations & revision history
 │   └── app/
-│       ├── api/                # auth.py (Google token verify), chat.py, documents.py
-│       ├── core/               # config.py (HF_TOKEN, GOOGLE_CLIENT_ID), security.py
-│       ├── db/                 # session.py (PostgreSQL & SQLite engine)
-│       ├── models/             # entities.py (SQLAlchemy ORM models)
-│       ├── schemas/            # schemas.py (Pydantic v2 validation)
-│       ├── services/           # llm_service.py (Groq + FLUX.1-schnell + Pollinations)
-│       │                       # rag_service.py (PDF/DOCX/TXT/CSV/JSON chunking)
+│       ├── api/                # auth.py, chat.py, documents.py, interviews.py, voice.py
+│       ├── core/               # config.py, security.py (JWT & password hashing)
+│       ├── db/                 # session.py (SQLAlchemy engine & Base)
+│       ├── models/             # entities.py (User, Session, Turn, Evaluation, IdempotencyRecord)
+│       ├── schemas/            # schemas.py (Pydantic v2 schemas)
+│       ├── services/           # llm_service.py (Groq + Gemini fallback), interview_service.py
+│       │                       # code_sandbox.py (AST static security & ephemeral execution)
+│       │                       # rag_service.py (Document chunking & vector search)
 │       └── main.py             # FastAPI application entry point
 │
+├── alembic.ini                 # Alembic migration configuration
 ├── run_phase3.bat              # 1-Click Windows launcher for both servers
 ├── run_backend.bat             # FastAPI backend runner script
 ├── run_frontend.bat            # Next.js frontend runner script
 ├── test_phase3_e2e.py          # Automated verification test suite
+├── test_interview_smoke.py     # Stage 1 E2E verification test suite
+├── test_stage2_adaptive.py     # Stage 2 Adaptive Probing verification suite
+├── test_stage3_tracks.py       # Stage 3 Track Rubrics verification suite
+├── test_stage4_coding_sandbox.py # Stage 4 Code Sandbox verification suite
+├── test_stage5_teach_back_report.py # Stage 5 Teach-Back & Report Export suite
+├── test_voice_pipeline.py      # Speech-to-text pipeline test suite
 ├── .env                        # Environment configuration (Groq, Google, HF, DB)
 └── README.md                   # Project documentation
 ```
