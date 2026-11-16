@@ -598,7 +598,7 @@ export async function downloadInterviewReportMarkdown(sessionId: string): Promis
 export async function checkBackendHealth(): Promise<boolean> {
   try {
     const rootUrl = API_BASE.replace(/\/api\/v1\/?$/, '');
-    const res = await fetch(`${rootUrl}/health`);
+    const res = await fetch(`${rootUrl}/health`, { cache: 'no-store' });
     return res.ok;
   } catch {
     return false;
