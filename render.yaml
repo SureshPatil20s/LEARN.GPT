@@ -1,14 +1,16 @@
+# Render Blueprint — https://docs.render.com/blueprint-spec
 services:
   - type: web
     name: learn-gpt-backend
-    env: python
-    runtime: python-3.12.8
+    runtime: python          # "runtime" replaces the deprecated "env" field
     plan: free
     buildCommand: "pip install -r requirements.txt"
     startCommand: "python -m uvicorn server.app.main:app --host 0.0.0.0 --port $PORT"
     healthCheckPath: /health
     autoDeploy: true
     envVars:
+      - key: PYTHON_VERSION   # Explicit Python version (runtime.txt also present as fallback)
+        value: "3.12.8"
       - key: ENVIRONMENT
         value: production
       - key: DATABASE_URL
@@ -24,4 +26,6 @@ services:
       - key: ADDITIONAL_CORS_ORIGINS
         sync: false
       - key: HF_TOKEN
+        sync: false
+      - key: GOOGLE_CLIENT_ID
         sync: false
