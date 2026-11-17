@@ -1,6 +1,0 @@
-{
-  "apphosting": {
-    "backendId": "learn-gpt-frontend",
-    "rootDir": "client"
-  }
-}

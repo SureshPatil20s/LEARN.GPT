@@ -59,9 +59,4 @@ env:
       - BUILD
       - RUNTIME
 
-  # Optional Google OAuth Client ID (if using @react-oauth/google)
-  - variable: NEXT_PUBLIC_GOOGLE_CLIENT_ID
-    value: ""
-    availability:
-      - BUILD
-      - RUNTIME
+
