@@ -3,6 +3,8 @@ import {
   getAuth,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   updateProfile,
@@ -34,15 +36,47 @@ export async function signInWithGooglePopup(): Promise<{
   avatarUrl?: string;
   idToken?: string;
 }> {
-  const result: UserCredential = await signInWithPopup(auth, googleProvider);
+  try {
+    // Try popup first (best UX)
+    const result: UserCredential = await signInWithPopup(auth, googleProvider);
+    const user = result.user;
+    const idToken = await user.getIdToken();
+    return {
+      email: user.email || '',
+      name: user.displayName || user.email?.split('@')[0] || 'User',
+      avatarUrl: user.photoURL || undefined,
+      idToken,
+    };
+  } catch (err: any) {
+    if (err?.code === 'auth/popup-blocked') {
+      // Popup was blocked by browser — fall back to redirect flow
+      await signInWithRedirect(auth, googleProvider);
+      // Page will reload; result is handled by getGoogleRedirectResult() on mount
+      return { email: '', name: '' }; // unreachable after redirect
+    }
+    throw err;
+  }
+}
+
+/**
+ * Call this once on app mount to pick up the result of a redirect sign-in.
+ * Returns null if there is no pending redirect result.
+ */
+export async function getGoogleRedirectResult(): Promise<{
+  email: string;
+  name: string;
+  avatarUrl?: string;
+  idToken?: string;
+} | null> {
+  const result = await getRedirectResult(auth);
+  if (!result) return null;
   const user = result.user;
   const idToken = await user.getIdToken();
-
   return {
     email: user.email || '',
     name: user.displayName || user.email?.split('@')[0] || 'User',
     avatarUrl: user.photoURL || undefined,
-    idToken: idToken,
+    idToken,
   };
 }
 

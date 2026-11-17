@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User } from '@/types';
 import { getCurrentUser, getToken, loginUser, loginWithGoogleApi, registerUser, setToken, updateCurrentUser, loginAsGuest } from '@/lib/api';
-import { signInWithFirebaseEmail, signUpWithFirebaseEmail } from '@/lib/firebase';
+import { signInWithFirebaseEmail, signUpWithFirebaseEmail, getGoogleRedirectResult } from '@/lib/firebase';
 
 interface AuthContextType {
   user: User | null;
@@ -28,17 +28,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [authModalOpen, setAuthModalOpen] = useState(false);
 
   useEffect(() => {
-    const existingToken = getToken();
-    if (existingToken) {
-      setTokenState(existingToken);
-      getCurrentUser()
-        .then((userData) => {
-          setUser(userData);
+    // Handle Google redirect sign-in result (when popup was blocked)
+    getGoogleRedirectResult()
+      .then(async (googleUser) => {
+        if (googleUser && googleUser.email) {
+          const res = await loginWithGoogleApi(googleUser.email, googleUser.name, googleUser.avatarUrl, googleUser.idToken);
+          setTokenState(res.access_token);
+          setUser(res.user);
           setIsLoading(false);
-        })
-        .catch(() => {
-          // Token expired, smoothly fallback to a guest session
-          setToken(null);
+          return; // redirect result handled, skip guest init
+        }
+
+        // Normal startup: check existing token
+        const existingToken = getToken();
+        if (existingToken) {
+          setTokenState(existingToken);
+          getCurrentUser()
+            .then((userData) => {
+              setUser(userData);
+              setIsLoading(false);
+            })
+            .catch(() => {
+              // Token expired, smoothly fallback to a guest session
+              setToken(null);
+              loginAsGuest()
+                .then((res) => {
+                  setTokenState(res.access_token);
+                  setUser(res.user);
+                })
+                .catch(() => {
+                  setTokenState(null);
+                  setUser(null);
+                })
+                .finally(() => setIsLoading(false));
+            });
+        } else {
+          // First-time visitor: auto-initialize seamless guest session
           loginAsGuest()
             .then((res) => {
               setTokenState(res.access_token);
@@ -49,20 +74,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               setUser(null);
             })
             .finally(() => setIsLoading(false));
-        });
-    } else {
-      // First-time visitor: auto-initialize seamless guest session
-      loginAsGuest()
-        .then((res) => {
-          setTokenState(res.access_token);
-          setUser(res.user);
-        })
-        .catch(() => {
-          setTokenState(null);
-          setUser(null);
-        })
-        .finally(() => setIsLoading(false));
-    }
+        }
+      })
+      .catch(() => {
+        setIsLoading(false);
+      });
   }, []);
 
   const loginGuest = async () => {

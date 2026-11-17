@@ -19,10 +19,12 @@ from server.app.api.personas_prompts import router as personas_prompts_router
 from server.app.api.memory import router as memory_router
 from server.app.api.interviews import router as interviews_router
 
-# In development/local SQLite, initialize tables if needed.
-# In production, schema migrations are strictly managed via Alembic (alembic upgrade head).
-if settings.ENVIRONMENT.lower() != "production" and not os.getenv("RENDER"):
+# Auto-initialize database tables across SQLite and PostgreSQL (Supabase)
+try:
     Base.metadata.create_all(bind=engine)
+except Exception as e:
+    import logging
+    logging.getLogger(__name__).warning(f"Database table initialization warning: {e}")
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
