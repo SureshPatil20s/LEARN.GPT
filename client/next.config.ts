@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  /* Standalone output required for containerized environments like Firebase App Hosting / Cloud Run */
+  output: "standalone",
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {

@@ -1,0 +1,67 @@
+# ==============================================================================
+# Firebase App Hosting Configuration for LEARN.GPT Frontend
+# Docs: https://firebase.google.com/docs/app-hosting/configure
+# ==============================================================================
+
+# Cloud Run container configuration
+runConfig:
+  cpu: 1
+  memoryMiB: 512
+  minInstances: 0       # Scales down to 0 on idle to conserve free tier quotas
+  maxInstances: 10      # Caps scaling to protect against unexpected surges
+  concurrency: 80       # Requests per container instance
+
+# Environment variables for Next.js build & runtime
+# Note: NEXT_PUBLIC_* variables must be available at BUILD time so Next.js
+# can inline them into static bundles during compilation.
+env:
+  # Backend API Base URL (Render Web Service)
+  - variable: NEXT_PUBLIC_API_URL
+    value: "https://learn-gpt-backend.onrender.com/api/v1"
+    availability:
+      - BUILD
+      - RUNTIME
+
+  # Firebase Client Web SDK Configuration (sureshgpt-1334e)
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    value: "AIzaSyDWsWDpEC-OtNGgK8c6xLlFIPVzwU5BzUg"
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    value: "sureshgpt-1334e.firebaseapp.com"
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    value: "sureshgpt-1334e"
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+    value: "sureshgpt-1334e.firebasestorage.app"
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+    value: "528536100554"
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    value: "1:528536100554:web:9baaec4c7bf26321249e33"
+    availability:
+      - BUILD
+      - RUNTIME
+
+  # Optional Google OAuth Client ID (if using @react-oauth/google)
+  - variable: NEXT_PUBLIC_GOOGLE_CLIENT_ID
+    value: ""
+    availability:
+      - BUILD
+      - RUNTIME

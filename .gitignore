@@ -29,6 +29,11 @@ venv/
 .venv/
 env/
 
+# Firebase
+.firebase/
+apphosting.*.local.yaml
+
+
 # Node / Next.js (root-level, in case)
 node_modules/
 .next/
