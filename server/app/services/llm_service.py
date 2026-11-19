@@ -40,7 +40,7 @@ GEMINI_TEXT_MODELS = ["gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.8-f
 GEMINI_IMAGE_MODELS = ["gemini-2.5-flash-image", "gemini-3.1-flash-image"]
 
 # Groq confirmed working models — automatic failover chain
-GROQ_TEXT_MODELS = ["qwen/qwen3.8-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b"]
+GROQ_TEXT_MODELS = ["openai/gpt-oss-120b", "qwen/qwen3.8-27b", "openai/gpt-oss-20b", "allam-2-7b"]
 GROQ_FALLBACK_MODEL = "qwen/qwen3.8-27b"
 
 IMAGE_GEN_TRIGGERS = (
@@ -535,6 +535,8 @@ class IntelligentRouter:
         candidate_models = list(GROQ_TEXT_MODELS)
         if preferred_model and preferred_model in candidate_models:
             candidate_models.remove(preferred_model)
+            candidate_models.insert(0, preferred_model)
+        elif preferred_model and (preferred_model.startswith(("openai/", "qwen/", "allam", "meta-llama/")) or "/" in preferred_model or "-7b" in preferred_model):
             candidate_models.insert(0, preferred_model)
 
         last_error = None

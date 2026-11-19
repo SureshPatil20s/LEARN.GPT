@@ -10,6 +10,7 @@ import {
   Sun,
   Moon,
   Settings,
+  Check,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -60,26 +61,27 @@ export default function Navbar({
           </div>
 
           {/* Model dropdown menu */}
-          <div className="absolute left-0 mt-1 w-72 bg-white dark:bg-[#1a1a1a] border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-2xl py-1 hidden group-hover:block z-50">
-            <div className="px-3 py-1.5 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider flex items-center justify-between">
-              <span>Select Model</span>
-              <span className="text-[9px] text-emerald-500 font-medium">Auto-Routed</span>
+          <div className="absolute left-0 mt-1 w-84 bg-white dark:bg-[#1a1a1a] border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-2xl py-2 hidden group-hover:block z-50">
+            <div className="px-3.5 py-1.5 text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">
+              SELECT MODEL ENGINE
             </div>
             {models.map((model) => (
               <button
                 key={model.id}
                 onClick={() => onSelectModel(model.id)}
-                className={`w-full text-left px-3 py-2 text-xs flex flex-col gap-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800/80 transition ${
-                  selectedModel === model.id ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white font-medium' : 'text-zinc-700 dark:text-zinc-300'
+                className={`w-full text-left px-3.5 py-2 text-xs flex items-center justify-between gap-2 hover:bg-zinc-100 dark:hover:bg-zinc-800/80 transition ${
+                  selectedModel === model.id ? 'bg-zinc-100/90 dark:bg-zinc-800/70 text-zinc-900 dark:text-white font-medium' : 'text-zinc-700 dark:text-zinc-300'
                 }`}
               >
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-zinc-900 dark:text-white">{model.name}</span>
-                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-zinc-200 dark:bg-zinc-700/60 text-zinc-700 dark:text-zinc-300 font-mono">
+                <div className="flex flex-col min-w-0 flex-1">
+                  <span className="font-semibold text-zinc-900 dark:text-white truncate">{model.name}</span>
+                  <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-mono mt-0.5">
                     {model.provider}
                   </span>
                 </div>
-                <span className="text-[10px] text-zinc-500 dark:text-zinc-400 leading-tight">{model.description}</span>
+                {selectedModel === model.id && (
+                  <Check className="w-4 h-4 text-blue-500 shrink-0" />
+                )}
               </button>
             ))}
           </div>

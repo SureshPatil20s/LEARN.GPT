@@ -36,40 +36,40 @@ class Settings(BaseSettings):
     # Available models shown in the frontend model selector
     AVAILABLE_MODELS: list = [
         {
-            "id": "auto",
-            "name": "🤖 Qwen 2.5 1.5B (Smart Router)",
-            "provider": "Smart Router",
-            "description": "Autonomous multi-model router — ultra-fast LPU inference with automatic failover",
+            "id": "qwen2.5-1.5b",
+            "name": "Qwen 2.5 1.5B Instruct (Hugging Face / Fast)",
+            "provider": "Hugging Face",
+            "description": "Ultra-fast Qwen 2.5 1.5B Instruct via Hugging Face with smart failover",
             "is_default": True
         },
         {
-            "id": "gemini-3.5-flash",
-            "name": "Gemini 3.5 Flash",
-            "provider": "Google AI",
-            "description": "Fast, multimodal reasoning with real-world grounding"
-        },
-        {
-            "id": "gemini-3.5-flash-lite",
-            "name": "Gemini 3.5 Flash Lite",
-            "provider": "Google AI",
-            "description": "Ultra-fast lightweight Gemini model for rapid queries"
+            "id": "openai/gpt-oss-120b",
+            "name": "GPT-OSS 120B (Flagship Deep Intelligence)",
+            "provider": "Groq",
+            "description": "High-capacity open reasoning flagship model — Groq LPU speed"
         },
         {
             "id": "qwen/qwen3.8-27b",
-            "name": "Qwen 3.8 27B (Groq)",
+            "name": "Qwen 3.8 27B (High Performance)",
             "provider": "Groq",
-            "description": "Advanced reasoning & multilingual — Groq LPU speed"
+            "description": "Advanced reasoning, code & multilingual — Groq LPU speed"
         },
         {
-            "id": "openai/gpt-oss-120b",
-            "name": "GPT-OSS 120B (Groq)",
+            "id": "openai/gpt-oss-20b",
+            "name": "GPT-OSS 20B (Fast Stream)",
             "provider": "Groq",
-            "description": "High-capacity open reasoning model — Groq LPU speed"
+            "description": "Ultra-fast low-latency streaming model — Groq LPU speed"
+        },
+        {
+            "id": "allam-2-7b",
+            "name": "ALLaM 2 7B (Lightweight)",
+            "provider": "Groq",
+            "description": "Lightweight efficient bilingual reasoning model — Groq LPU speed"
         },
         {
             "id": "flux-image-gen",
             "name": "🎨 AI Image Generator",
-            "provider": "Gemini / HuggingFace / Pollinations",
+            "provider": "Gemini / HuggingFace",
             "description": "Photorealistic image generation with automatic quality fallback"
         },
         {
@@ -77,12 +77,6 @@ class Settings(BaseSettings):
             "name": "👁️ Vision & OCR (Gemini)",
             "provider": "Google AI",
             "description": "Read & extract text from images, scans, and diagrams via Gemini multimodal"
-        },
-        {
-            "id": "qwen2.5-1.5b",
-            "name": "Qwen 2.5 1.5B",
-            "provider": "HuggingFace",
-            "description": "Qwen 2.5 1.5B Instruct — lightweight, fast open model"
         },
     ]
 

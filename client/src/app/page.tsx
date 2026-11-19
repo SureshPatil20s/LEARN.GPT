@@ -51,7 +51,7 @@ export default function Home() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [models, setModels] = useState<ModelOption[]>([]);
-  const [selectedModel, setSelectedModel] = useState<string>('auto');
+  const [selectedModel, setSelectedModel] = useState<string>('qwen2.5-1.5b');
   const [useRag, setUseRag] = useState<boolean>(false);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
 
