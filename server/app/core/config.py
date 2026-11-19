@@ -37,9 +37,9 @@ class Settings(BaseSettings):
     AVAILABLE_MODELS: list = [
         {
             "id": "auto",
-            "name": "🤖 Auto (Gemini + Groq)",
+            "name": "🤖 Qwen 2.5 1.5B (Smart Router)",
             "provider": "Smart Router",
-            "description": "Automatically uses Gemini for all tasks; Groq Qwen as fallback on rate limit",
+            "description": "Autonomous multi-model router — ultra-fast LPU inference with automatic failover",
             "is_default": True
         },
         {

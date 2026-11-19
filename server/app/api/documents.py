@@ -135,7 +135,7 @@ async def upload_document(
     return doc
 
 
-@router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{document_id}", status_code=status.HTTP_200_OK)
 def delete_document(
     document_id: str,
     db: Session = Depends(get_db),
@@ -151,5 +151,5 @@ def delete_document(
 
     db.delete(doc)
     db.commit()
-    return None
+    return {"status": "success", "message": "Document deleted successfully", "id": document_id}
 

@@ -31,6 +31,7 @@ export default function DocumentModal({
   onDelete,
 }: DocumentModalProps) {
   const [isUploading, setIsUploading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
 
@@ -66,6 +67,18 @@ export default function DocumentModal({
       setError(err.message || 'Upload failed');
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    setError(null);
+    setDeletingId(id);
+    try {
+      await onDelete(id);
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete document');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -186,11 +199,16 @@ export default function DocumentModal({
                 </div>
 
                 <button
-                  onClick={() => onDelete(doc.id)}
-                  className="p-1.5 text-zinc-500 hover:text-rose-400 hover:bg-zinc-800 rounded-lg transition"
+                  onClick={() => handleDelete(doc.id)}
+                  disabled={deletingId === doc.id}
+                  className="p-1.5 text-zinc-500 hover:text-rose-400 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-lg transition disabled:opacity-50"
                   title="Delete document"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  {deletingId === doc.id ? (
+                    <Loader2 className="w-4 h-4 text-rose-400 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-4 h-4" />
+                  )}
                 </button>
               </div>
             ))

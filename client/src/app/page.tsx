@@ -539,20 +539,7 @@ export default function Home() {
           models={models}
           selectedModel={selectedModel}
           onSelectModel={setSelectedModel}
-          useRag={useRag}
-          onToggleRag={() => setUseRag((prev) => !prev)}
-          useWebSearch={settings.use_web_search}
-          onToggleWebSearch={() => handleUpdateSettings({ use_web_search: !settings.use_web_search })}
-          docCount={documents.length}
-          onOpenDocuments={() => setDocModalOpen(true)}
-          activePersona={activePersona}
-          onOpenPersonas={() => setPersonaModalOpen(true)}
-          onOpenPromptLibrary={() => setPromptModalOpen(true)}
           onOpenSettings={() => setSettingsModalOpen(true)}
-          learningMode={learningMode}
-          onOpenLearningMode={() => setLearningModePanelOpen(true)}
-          onOpenQuiz={() => setQuizModalOpen(true)}
-          onOpenInterviewer={settings.show_interviewer ? () => setInterviewerModalOpen(true) : undefined}
         />
 
         {/* Backend Offline Notice */}
@@ -661,6 +648,14 @@ export default function Home() {
         }}
         models={models}
         onClearHistory={handleClearHistory}
+        onOpenLearningMode={() => setLearningModePanelOpen(true)}
+        onOpenInterviewer={() => setInterviewerModalOpen(true)}
+        onOpenDocuments={() => setDocModalOpen(true)}
+        onOpenPersonas={() => setPersonaModalOpen(true)}
+        onOpenPromptLibrary={() => setPromptModalOpen(true)}
+        docCount={documents.length}
+        learningMode={learningMode}
+        activePersona={activePersona}
       />
       <LearningModePanel
         isOpen={learningModePanelOpen}

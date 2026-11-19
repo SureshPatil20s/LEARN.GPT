@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { AppSettings, MemoryItem, ModelOption } from '@/types';
+import { AppSettings, MemoryItem, ModelOption, Persona } from '@/types';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import {
@@ -24,6 +24,11 @@ import {
   Cpu,
   User as UserIcon,
   Briefcase,
+  GraduationCap,
+  BookOpen,
+  Bot,
+  ChevronRight,
+  FileText,
 } from 'lucide-react';
 
 interface SettingsModalProps {
@@ -38,6 +43,15 @@ interface SettingsModalProps {
   onClearAllMemories: () => Promise<void>;
   models: ModelOption[];
   onClearHistory: () => void;
+  // Workspace Tool Launchers
+  onOpenLearningMode?: () => void;
+  onOpenInterviewer?: () => void;
+  onOpenDocuments?: () => void;
+  onOpenPersonas?: () => void;
+  onOpenPromptLibrary?: () => void;
+  docCount?: number;
+  learningMode?: string;
+  activePersona?: Persona | null;
 }
 
 export default function SettingsModal({
@@ -52,10 +66,18 @@ export default function SettingsModal({
   onClearAllMemories,
   models,
   onClearHistory,
+  onOpenLearningMode,
+  onOpenInterviewer,
+  onOpenDocuments,
+  onOpenPersonas,
+  onOpenPromptLibrary,
+  docCount = 0,
+  learningMode = 'standard',
+  activePersona,
 }: SettingsModalProps) {
   const { user } = useAuth();
   const { theme, toggleTheme, isDark } = useTheme();
-  const [activeTab, setActiveTab] = useState<'general' | 'tools' | 'model'>('general');
+  const [activeTab, setActiveTab] = useState<'workspace' | 'general' | 'model'>('workspace');
   const [newMemoryText, setNewMemoryText] = useState('');
   const [isAddingMemory, setIsAddingMemory] = useState(false);
 
@@ -70,6 +92,13 @@ export default function SettingsModal({
       setNewMemoryText('');
     } finally {
       setIsAddingMemory(false);
+    }
+  };
+
+  const handleLaunchTool = (launcher?: () => void) => {
+    if (launcher) {
+      onClose();
+      launcher();
     }
   };
 
@@ -90,15 +119,25 @@ export default function SettingsModal({
             <Settings className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-zinc-900 dark:text-white">Settings & Tools</h2>
+            <h2 className="text-lg font-bold text-zinc-900 dark:text-white">Settings & Workspace Tools</h2>
             <p className="text-xs text-zinc-600 dark:text-zinc-400">
-              Customize appearance, intelligent tools, and model preferences
+              Access educational tools, configure workspace capabilities, and adjust model preferences
             </p>
           </div>
         </div>
 
         {/* Tab Navigation */}
         <div className="flex gap-2 border-b border-zinc-200 dark:border-zinc-800 pb-3 mb-4 shrink-0">
+          <button
+            onClick={() => setActiveTab('workspace')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+              activeTab === 'workspace'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800/60'
+            }`}
+          >
+            Workspace & Tools
+          </button>
           <button
             onClick={() => setActiveTab('general')}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition ${
@@ -107,17 +146,7 @@ export default function SettingsModal({
                 : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800/60'
             }`}
           >
-            General & Theme
-          </button>
-          <button
-            onClick={() => setActiveTab('tools')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition ${
-              activeTab === 'tools'
-                ? 'bg-emerald-600 text-white shadow-sm'
-                : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800/60'
-            }`}
-          >
-            Tools & Capabilities
+            General & Account
           </button>
           <button
             onClick={() => setActiveTab('model')}
@@ -133,13 +162,224 @@ export default function SettingsModal({
 
         {/* Tab Content Container */}
         <div className="flex-1 overflow-y-auto pr-1 space-y-5 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-800">
-          {/* TAB 1: GENERAL & THEME */}
+          {/* TAB 1: WORKSPACE & TOOLS */}
+          {activeTab === 'workspace' && (
+            <div className="space-y-4">
+              {/* Interactive Tools Suite */}
+              <div className="space-y-2.5">
+                <div className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider px-1">
+                  Interactive AI Tools
+                </div>
+
+                {/* 1. Learning Modes */}
+                <div className="p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-[#121212] flex items-center justify-between hover:border-emerald-500/50 transition">
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                      <GraduationCap className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-xs font-bold text-zinc-900 dark:text-white">Educational Learning Modes</h4>
+                        {learningMode !== 'standard' && (
+                          <span className="text-[10px] px-2 py-0.2 rounded-full font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 capitalize">
+                            {learningMode.replace('_', ' ')}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-zinc-500 max-w-sm mt-0.5">
+                        Adaptive AI Tutor, Socratic Method discovery, Quiz Generator &amp; Visual Learning
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleLaunchTool(onOpenLearningMode)}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition shadow-xs shrink-0"
+                  >
+                    <span>Launch</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* 2. AI Interviewer */}
+                <div className="p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-[#121212] flex items-center justify-between hover:border-blue-500/50 transition">
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                      <Briefcase className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-zinc-900 dark:text-white">AI Interview Simulator</h4>
+                      <p className="text-[11px] text-zinc-500 max-w-sm mt-0.5">
+                        Simulate Technical, HR, Coding, Project &amp; Viva interviews with AI-scored evaluations
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleLaunchTool(onOpenInterviewer)}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition shadow-xs shrink-0"
+                  >
+                    <span>Start</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* 3. Knowledge Base (RAG) */}
+                <div className="p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-[#121212] flex items-center justify-between hover:border-amber-500/50 transition">
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                      <BookOpen className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-xs font-bold text-zinc-900 dark:text-white">Knowledge Base &amp; Documents</h4>
+                        {docCount > 0 && (
+                          <span className="text-[10px] px-2 py-0.2 rounded-full font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                            {docCount} files
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-zinc-500 max-w-sm mt-0.5">
+                        Upload and manage PDFs, DOCX, TXT files indexed for semantic RAG citations
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleLaunchTool(onOpenDocuments)}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-900 dark:text-white font-semibold text-xs transition shadow-xs shrink-0"
+                  >
+                    <span>Manage</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* 4. AI Personas */}
+                <div className="p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-[#121212] flex items-center justify-between hover:border-purple-500/50 transition">
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-purple-100 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0 text-base">
+                      {activePersona?.avatar || '🤖'}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-xs font-bold text-zinc-900 dark:text-white">AI Character Personas</h4>
+                        <span className="text-[10px] text-zinc-500 font-mono">
+                          ({activePersona?.name || 'General Assistant'})
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-zinc-500 max-w-sm mt-0.5">
+                        Custom AI personas, specialized teaching agents, and custom instructions
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleLaunchTool(onOpenPersonas)}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-900 dark:text-white font-semibold text-xs transition shadow-xs shrink-0"
+                  >
+                    <span>Customize</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* 5. Prompt Library */}
+                <div className="p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-[#121212] flex items-center justify-between hover:border-rose-500/50 transition">
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+                      <Sliders className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-zinc-900 dark:text-white">Prompt Template Library</h4>
+                      <p className="text-[11px] text-zinc-500 max-w-sm mt-0.5">
+                        High-yield prompt templates with dynamic variable inputs for research, coding &amp; study
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleLaunchTool(onOpenPromptLibrary)}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-900 dark:text-white font-semibold text-xs transition shadow-xs shrink-0"
+                  >
+                    <span>Browse</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Workspace Capabilities & Toggles */}
+              <div className="space-y-2.5 pt-2 border-t border-zinc-200 dark:border-zinc-800">
+                <div className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider px-1">
+                  Workspace Intelligence Capabilities
+                </div>
+
+                {/* Web Search Toggle */}
+                <div className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-[#121212] flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <Globe className="w-4 h-4 text-blue-500" />
+                    <div>
+                      <span className="text-xs font-semibold text-zinc-900 dark:text-white">Live Web Search &amp; Grounding</span>
+                      <p className="text-[11px] text-zinc-500">Inspect real-time web results when answering questions</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => onUpdateSettings({ use_web_search: !settings.use_web_search })}
+                    className={`p-1.5 rounded-xl border transition ${
+                      settings.use_web_search
+                        ? 'bg-blue-600 text-white border-blue-500'
+                        : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-400 border-zinc-300 dark:border-zinc-700'
+                    }`}
+                  >
+                    {settings.use_web_search ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
+                  </button>
+                </div>
+
+                {/* RAG Toggle */}
+                <div className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-[#121212] flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <Database className="w-4 h-4 text-emerald-500" />
+                    <div>
+                      <span className="text-xs font-semibold text-zinc-900 dark:text-white">Document RAG Retrieval</span>
+                      <p className="text-[11px] text-zinc-500">Retrieve relevant excerpts from uploaded documents</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => onUpdateSettings({ use_rag: !settings.use_rag })}
+                    className={`p-1.5 rounded-xl border transition ${
+                      settings.use_rag
+                        ? 'bg-emerald-600 text-white border-emerald-500'
+                        : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-400 border-zinc-300 dark:border-zinc-700'
+                    }`}
+                  >
+                    {settings.use_rag ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
+                  </button>
+                </div>
+
+                {/* Cross-Chat Memory Toggle */}
+                <div className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-[#121212] flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <Brain className="w-4 h-4 text-purple-500" />
+                    <div>
+                      <span className="text-xs font-semibold text-zinc-900 dark:text-white">Persistent Cross-Chat Memory</span>
+                      <p className="text-[11px] text-zinc-500">Inject saved personal context &amp; preferences into chats</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => onUpdateSettings({ use_memory: !settings.use_memory })}
+                    className={`p-1.5 rounded-xl border transition ${
+                      settings.use_memory
+                        ? 'bg-purple-600 text-white border-purple-500'
+                        : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-400 border-zinc-300 dark:border-zinc-700'
+                    }`}
+                  >
+                    {settings.use_memory ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: GENERAL & THEME */}
           {activeTab === 'general' && (
             <div className="space-y-5">
               {/* Appearance Setting */}
               <div className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-[#121212] flex items-center justify-between">
                 <div>
-                  <h4 className="text-xs font-bold text-zinc-900 dark:text-white">Theme & Appearance</h4>
+                  <h4 className="text-xs font-bold text-zinc-900 dark:text-white">Theme &amp; Appearance</h4>
                   <p className="text-[11px] text-zinc-500">
                     Currently set to <span className="font-semibold text-emerald-600 dark:text-emerald-400 capitalize">{theme}</span> theme
                   </p>
@@ -277,166 +517,9 @@ export default function SettingsModal({
             </div>
           )}
 
-          {/* TAB 2: TOOLS & CAPABILITIES */}
-          {activeTab === 'tools' && (
-            <div className="space-y-3.5">
-              {/* Web Search & Walkthrough Tool */}
-              <div className="p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-[#121212] flex items-center justify-between">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 mt-0.5">
-                    <Globe className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-zinc-900 dark:text-white">Web Search & Live Website Walkthrough</h4>
-                    <p className="text-[11px] text-zinc-500 max-w-sm">
-                      Inspect URLs, extract live website pages, and query the web in real-time
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => onUpdateSettings({ use_web_search: !settings.use_web_search })}
-                  className={`p-1.5 rounded-xl border transition ${
-                    settings.use_web_search
-                      ? 'bg-blue-600 text-white border-blue-500'
-                      : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-400 border-zinc-300 dark:border-zinc-700'
-                  }`}
-                >
-                  {settings.use_web_search ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
-                </button>
-              </div>
-
-              {/* RAG Knowledge Base Grounding */}
-              <div className="p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-[#121212] flex items-center justify-between">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
-                    <Database className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-zinc-900 dark:text-white">Document RAG Knowledge Base</h4>
-                    <p className="text-[11px] text-zinc-500 max-w-sm">
-                      Semantic vector retrieval from uploaded PDF, DOCX, TXT, CSV, JSON files
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => onUpdateSettings({ use_rag: !settings.use_rag })}
-                  className={`p-1.5 rounded-xl border transition ${
-                    settings.use_rag
-                      ? 'bg-emerald-600 text-white border-emerald-500'
-                      : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-400 border-zinc-300 dark:border-zinc-700'
-                  }`}
-                >
-                  {settings.use_rag ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
-                </button>
-              </div>
-
-              {/* Cross-Chat Memory Tool */}
-              <div className="p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-[#121212] flex items-center justify-between">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-purple-100 dark:bg-purple-950 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0 mt-0.5">
-                    <Brain className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-zinc-900 dark:text-white">Persistent Cross-Chat Memory</h4>
-                    <p className="text-[11px] text-zinc-500 max-w-sm">
-                      Apply stored personal context and preferences to all new chat sessions
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => onUpdateSettings({ use_memory: !settings.use_memory })}
-                  className={`p-1.5 rounded-xl border transition ${
-                    settings.use_memory
-                      ? 'bg-purple-600 text-white border-purple-500'
-                      : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-400 border-zinc-300 dark:border-zinc-700'
-                  }`}
-                >
-                  {settings.use_memory ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
-                </button>
-              </div>
-
-              {/* Multimodal OCR & Vision */}
-              <div className="p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-[#121212] flex items-center justify-between">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-950 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
-                    <Eye className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-zinc-900 dark:text-white">Multimodal Vision OCR</h4>
-                    <p className="text-[11px] text-zinc-500 max-w-sm">
-                      Transcribe text, tables, and math equations from uploaded photos & screenshots
-                    </p>
-                  </div>
-                </div>
-                <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-300 dark:border-emerald-800">
-                  Active
-                </span>
-              </div>
-
-              {/* Speech-to-Text Voice Mode */}
-              <div className="p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-[#121212] flex items-center justify-between">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0 mt-0.5">
-                    <Mic className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-zinc-900 dark:text-white">Groq Whisper Voice Mode</h4>
-                    <p className="text-[11px] text-zinc-500 max-w-sm">
-                      High-accuracy voice transcription with deduplication and interim smoothing
-                    </p>
-                  </div>
-                </div>
-                <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-300 dark:border-emerald-800">
-                  Active
-                </span>
-              </div>
-
-              {/* AI Interviewer Feature Toggle */}
-              <div className="p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-[#121212] flex items-center justify-between">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
-                    <Briefcase className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-zinc-900 dark:text-white">AI Interview Simulator</h4>
-                    <p className="text-[11px] text-zinc-500 max-w-sm">
-                      Show the Interviewer button in the navbar — simulate technical, HR, coding, project &amp; viva interviews with AI-scored reports
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => onUpdateSettings({ show_interviewer: !settings.show_interviewer })}
-                  className={`p-1.5 rounded-xl border transition ${
-                    settings.show_interviewer
-                      ? 'bg-emerald-600 text-white border-emerald-500'
-                      : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-400 border-zinc-300 dark:border-zinc-700'
-                  }`}
-                >
-                  {settings.show_interviewer ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
-                </button>
-              </div>
-            </div>
-          )}
-
           {/* TAB 3: MODEL & PARAMETERS */}
           {activeTab === 'model' && (
             <div className="space-y-4">
-              {/* Powered by Groq Banner */}
-              <div className="p-3.5 rounded-xl bg-orange-500/10 border border-orange-500/25 dark:bg-orange-950/20 dark:border-orange-900/40 text-xs flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-orange-500/20 text-orange-600 dark:text-orange-400 flex items-center justify-center shrink-0 font-bold text-base">
-                  ⚡
-                </div>
-                <div>
-                  <div className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
-                    <span>Powered by Groq</span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-600 dark:text-orange-400 font-medium">LPU Engine</span>
-                  </div>
-                  <div className="text-[11px] text-zinc-600 dark:text-zinc-400 mt-0.5">
-                    It uses Groq-hosted AI for fast, high-performance processing.
-                  </div>
-                </div>
-              </div>
-
               {/* Default Model Selector */}
               <div>
                 <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
