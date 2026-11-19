@@ -37,6 +37,7 @@ import {
   submitMessageFeedback,
   updateConversation,
   uploadDocument,
+  uploadDocumentToConversation,
   deleteDocument,
   checkBackendHealth,
 } from '@/lib/api';
@@ -367,13 +368,21 @@ export default function Home() {
     let attachedName: string | undefined = undefined;
     if (attachedFile && !isImageFile) {
       try {
-        await uploadDocument(attachedFile, convId);
-        attachedName = attachedFile.name;
+        // Try the conversation-specific upload endpoint first (returns structured metadata)
+        const uploadResult = await uploadDocumentToConversation(convId!, attachedFile);
+        attachedName = uploadResult.filename;
         setStreamingContent(''); // Clear indexing notice as stream starts
-      } catch (err: any) {
-        console.error('Attachment upload failed:', err);
-        setStreamingContent('');
-        alert(`Failed to index file: ${err.message}`);
+      } catch {
+        // Fallback to the general upload endpoint
+        try {
+          await uploadDocument(attachedFile, convId!);
+          attachedName = attachedFile.name;
+          setStreamingContent('');
+        } catch (err: any) {
+          console.error('Attachment upload failed:', err);
+          setStreamingContent('');
+          alert(`Failed to index file: ${err.message}`);
+        }
       }
     }
 
@@ -388,7 +397,7 @@ export default function Home() {
       conversationId: convId,
       content,
       model: selectedModel,
-      useRag,
+      useRag: attachedName ? true : useRag,
       useWebSearch: settings.use_web_search,
       useMemory: settings.use_memory,
       temperature: settings.temperature,
@@ -421,8 +430,23 @@ export default function Home() {
         // Sync messages from DB to guarantee correct chronological order and deduplication
         if (convId) {
           getConversation(convId)
-            .then(({ messages: synced }) => setMessages(synced))
+            .then(({ messages: synced, conversation }) => {
+              setMessages(synced);
+              // Also update title in conversation list if changed
+              if (conversation?.title) {
+                setConversations((prev) =>
+                  prev.map((c) => (c.id === convId ? { ...c, title: conversation.title } : c))
+                );
+              }
+            })
             .catch(() => {});
+
+          // Refresh conversations to update order / intelligent titles
+          if (user && user.provider !== 'guest') {
+            getConversations()
+              .then(setConversations)
+              .catch(() => {});
+          }
         }
       },
       onError: (err) => {
@@ -501,6 +525,10 @@ export default function Home() {
         onOpenSettings={() => setSettingsModalOpen(true)}
         isOpen={sidebarOpen}
         onToggleOpen={() => setSidebarOpen((prev) => !prev)}
+        onOpenInterviewer={() => setInterviewerModalOpen(true)}
+        onOpenLearningMode={() => setLearningModePanelOpen(true)}
+        onOpenPersonas={() => setPersonaModalOpen(true)}
+        onOpenPromptLibrary={() => setPromptModalOpen(true)}
       />
 
       {/* Main Workspace */}
@@ -561,6 +589,7 @@ export default function Home() {
           onStopStreaming={() => setIsStreaming(false)}
           externalText={injectedPromptText}
           onClearExternalText={() => setInjectedPromptText('')}
+          conversationId={activeConversationId || undefined}
         />
       </div>
 

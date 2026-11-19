@@ -605,6 +605,22 @@ export async function checkBackendHealth(): Promise<boolean> {
   }
 }
 
+export async function uploadDocumentToConversation(
+  conversationId: string,
+  file: File
+): Promise<{ document_id: string; filename: string; file_type: string; file_size: number; total_chunks: number; status: string }> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const token = getToken();
+  const res = await fetch(`${API_BASE}/conversations/${conversationId}/upload-document`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+  if (!res.ok) throw new Error('Upload failed');
+  return res.json();
+}
+
 
 
 

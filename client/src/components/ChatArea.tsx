@@ -18,6 +18,7 @@ import {
   BookOpen,
   AlertTriangle,
   Eye,
+  Image as ImageIcon,
 } from 'lucide-react';
 
 let mermaidInitialized = false;
@@ -345,9 +346,49 @@ export default function ChatArea({
 
                 {/* Box Content Body */}
                 <div className="p-4">
-                  {isUser ? (
-                    <p className="text-sm whitespace-pre-wrap leading-relaxed text-zinc-900 dark:text-zinc-100">{msg.content}</p>
-                  ) : (
+                  {isUser ? (() => {
+                    const docMatch = msg.content.match(/^(?:📄\s*)?\*\*\[Attached Document:\s*([^\]]+)\]\*\*(?:\n\n)?([\s\S]*)$/i) ||
+                                     msg.content.match(/^\[Attached Document:\s*([^\]]+)\](?:\n\n)?([\s\S]*)$/i);
+                    const imgMatch = msg.content.match(/^(?:🖼️\s*)?\*\*\[Attached Image\]\*\*(?:\n\n)?([\s\S]*)$/i) ||
+                                     msg.content.match(/^\[Attached Image\](?:\n\n)?([\s\S]*)$/i);
+
+                    const hasAttachment = Boolean(docMatch || imgMatch);
+                    const filename = docMatch ? docMatch[1].trim() : imgMatch ? 'Attached Image' : null;
+                    const text = docMatch ? docMatch[2].trim() : imgMatch ? imgMatch[1].trim() : msg.content;
+                    const isDoc = Boolean(docMatch);
+
+                    const ext = filename && filename.includes('.') ? filename.split('.').pop()?.toUpperCase() : isDoc ? 'DOC' : 'IMG';
+                    const badgeColor =
+                      ext === 'PDF' ? 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20' :
+                      ext === 'DOCX' ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20' :
+                      ext === 'CSV' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' :
+                      'bg-zinc-500/10 text-zinc-600 dark:text-zinc-400 border-zinc-500/20';
+
+                    return (
+                      <div className="space-y-2.5">
+                        {hasAttachment && (
+                          <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-white/70 dark:bg-[#111111]/80 border border-zinc-200 dark:border-zinc-700/80 shadow-xs max-w-sm">
+                            <div className="w-8 h-8 rounded-lg bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                              {isDoc ? <FileText className="w-4 h-4" /> : <ImageIcon className="w-4 h-4" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 truncate">{filename}</span>
+                                <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${badgeColor}`}>{ext}</span>
+                              </div>
+                              <span className="text-[10px] text-zinc-500 dark:text-zinc-400 flex items-center gap-1 mt-0.5">
+                                <Check className="w-3 h-3 text-emerald-500 shrink-0" />
+                                {isDoc ? 'Attached & indexed for RAG' : 'Attached for vision analysis'}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                        {text && (
+                          <p className="text-sm whitespace-pre-wrap leading-relaxed text-zinc-900 dark:text-zinc-100">{text}</p>
+                        )}
+                      </div>
+                    );
+                  })() : (
                     <div className="space-y-3">
                       {/* Markdown Content with Mermaid support */}
                       <div className="prose dark:prose-invert prose-sm max-w-none text-zinc-800 dark:text-zinc-200 leading-relaxed break-words">

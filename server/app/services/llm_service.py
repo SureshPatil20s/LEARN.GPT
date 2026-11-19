@@ -362,6 +362,12 @@ class IntelligentRouter:
         if not clean_messages:
             clean_messages = messages
 
+        # Route to HuggingFace Inference API for Qwen2.5-1.5B
+        if preferred_model in ["qwen2.5-1.5b", "Qwen/Qwen2.5-1.5B-Instruct"]:
+            async for chunk in self._stream_hf_text(clean_messages, temperature, max_tokens):
+                yield chunk
+            return
+
         # If user explicitly picked a Gemini model from the picker
         if preferred_model and preferred_model in GEMINI_TEXT_MODELS:
             yielded_gemini = False
@@ -387,6 +393,75 @@ class IntelligentRouter:
             yield "*[Groq quota reached — auto-switched to Gemini fallback]*\n\n"
             async for chunk in self._stream_gemini_text(clean_messages, temperature, max_tokens):
                 yield chunk
+
+    async def _stream_hf_text(
+        self,
+        messages: List[Dict[str, Any]],
+        temperature: float,
+        max_tokens: int,
+    ) -> AsyncGenerator[str, None]:
+        """Stream text from HuggingFace Inference API — Qwen/Qwen2.5-1.5B-Instruct."""
+        HF_CHAT_URL = "https://api-inference.huggingface.co/models/Qwen/Qwen2.5-1.5B-Instruct/v1/chat/completions"
+        if not self.hf_token:
+            yield "ℹ️ *[Qwen 2.5 1.5B via Hugging Face — note: HF_TOKEN not set in environment. Auto-routing to fallback]*\n\n"
+            async for chunk in self._stream_groq_text(messages, temperature, max_tokens):
+                yield chunk
+            return
+
+        headers = {
+            "Authorization": f"Bearer {self.hf_token}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": "Qwen/Qwen2.5-1.5B-Instruct",
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": True,
+        }
+
+        yielded_any = False
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    HF_CHAT_URL,
+                    json=payload,
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=60),
+                ) as resp:
+                    if resp.status != 200:
+                        body = await resp.text()
+                        yield f"⚠️ HuggingFace API returned {resp.status}. Auto-switching to backup model:\n\n"
+                        async for chunk in self._stream_groq_text(messages, temperature, max_tokens):
+                            yield chunk
+                        return
+
+                    # Parse Server-Sent Events from HF streaming response
+                    async for raw_line in resp.content:
+                        line = raw_line.decode("utf-8", errors="ignore").strip()
+                        if not line or line == "data: [DONE]":
+                            continue
+                        if line.startswith("data: "):
+                            json_part = line[6:]
+                            try:
+                                data = json.loads(json_part)
+                                delta = data.get("choices", [{}])[0].get("delta", {})
+                                content = delta.get("content", "")
+                                if content:
+                                    yield content
+                                    yielded_any = True
+                            except (json.JSONDecodeError, IndexError, KeyError):
+                                continue
+        except asyncio.TimeoutError:
+            if not yielded_any:
+                yield "\n\n⚠️ HuggingFace Qwen model timed out. Auto-routing to backup model:\n\n"
+                async for chunk in self._stream_groq_text(messages, temperature, max_tokens):
+                    yield chunk
+        except Exception as e:
+            if not yielded_any:
+                yield f"\n\n*[HuggingFace notice: {str(e)} — auto-routing to backup]*\n\n"
+                async for chunk in self._stream_groq_text(messages, temperature, max_tokens):
+                    yield chunk
 
     async def _stream_gemini_text(
         self,

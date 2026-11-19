@@ -78,6 +78,12 @@ class Settings(BaseSettings):
             "provider": "Google AI",
             "description": "Read & extract text from images, scans, and diagrams via Gemini multimodal"
         },
+        {
+            "id": "qwen2.5-1.5b",
+            "name": "Qwen 2.5 1.5B",
+            "provider": "HuggingFace",
+            "description": "Qwen 2.5 1.5B Instruct — lightweight, fast open model"
+        },
     ]
 
     # Environment & Host Configuration

@@ -1,14 +1,4 @@
-"""
-Chat & Conversation API Endpoints:
-- List conversations (chronological + search)
-- Create new conversation
-- Get conversation with full message history
-- Rename conversation & toggle pin
-- Delete conversation
-- Real-time streaming AI response (SSE)
-- Message feedback (thumbs up/down)
-"""
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -32,6 +22,52 @@ from server.app.services.web_search import build_web_context
 from server.app.core.config import settings
 
 router = APIRouter(tags=["Chat & Conversations"])
+
+
+# ---------------------------------------------------------------------------
+# Intelligent Title Generation Helper
+# ---------------------------------------------------------------------------
+
+async def _generate_title(user_message: str, assistant_preview: str, llm) -> str:
+    """
+    Generates a concise 3–7 word chat title using the LLM.
+    Falls back to a truncated user message snippet on any error.
+    """
+    fallback = (user_message[:40] + "...") if len(user_message) > 40 else user_message
+
+    title_messages = [
+        {
+            "role": "system",
+            "content": (
+                "You generate concise chat titles. "
+                "Respond with ONLY the title, no quotes, no punctuation at end. 3-7 words max."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                f'Conversation: "{user_message[:200]}"\n'
+                f'Assistant replied about: "{assistant_preview[:100]}"\n'
+                "Generate title:"
+            ),
+        },
+    ]
+
+    try:
+        chunks = []
+        async for chunk in llm.stream_chat_completion(
+            messages=title_messages,
+            model=None,   # groq auto fallback
+            temperature=0.4,
+            max_tokens=20,
+        ):
+            chunks.append(chunk)
+        title = "".join(chunks).strip().strip('"\'').rstrip(".,;!?")
+        if not title or len(title) > 60:
+            return fallback
+        return title
+    except Exception:
+        return fallback
 
 
 @router.get("/conversations", response_model=List[ConversationResponse])
@@ -187,6 +223,49 @@ def delete_conversation(
     return None
 
 
+@router.patch("/conversations/{conversation_id}/generate-title")
+async def regenerate_conversation_title(
+    conversation_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Regenerates an intelligent title for a conversation using the LLM.
+    Does not regenerate if the conversation already has more than 4 messages
+    (considered established — user may have renamed it deliberately).
+    """
+    conv = db.query(Conversation).filter(
+        Conversation.id == conversation_id,
+        Conversation.user_id == current_user.id
+    ).first()
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    msg_count = db.query(Message).filter(Message.conversation_id == conversation_id).count()
+    if msg_count > 4:
+        return {"title": conv.title, "regenerated": False, "reason": "Conversation already established (> 4 messages)"}
+
+    # Gather first user and assistant messages for context
+    messages = db.query(Message).filter(
+        Message.conversation_id == conversation_id
+    ).order_by(Message.created_at.asc()).limit(4).all()
+
+    user_message = next((m.content for m in messages if m.role == "user"), "")
+    assistant_preview = next((m.content for m in messages if m.role == "assistant"), "")
+
+    if not user_message:
+        return {"title": conv.title, "regenerated": False, "reason": "No user message found"}
+
+    generated_title = await _generate_title(
+        user_message=user_message,
+        assistant_preview=assistant_preview[:200],
+        llm=hosted_llm,
+    )
+    conv.title = generated_title
+    db.commit()
+    return {"title": generated_title, "regenerated": True}
+
+
 async def _handle_message_stream(
     conversation_id: str,
     msg_in: MessageCreate,
@@ -249,12 +328,8 @@ async def _handle_message_stream(
     db.add(user_msg)
     db.commit()
 
-    # Auto-generate title if this is the first turn
+    # Auto-generate title if this is the first turn (using snippet fallback; full LLM title generated post-stream)
     msg_count = db.query(Message).filter(Message.conversation_id == conversation_id).count()
-    if msg_count <= 1:
-        snippet = msg_in.content.strip()
-        conv.title = snippet[:32] + "..." if len(snippet) > 32 else snippet
-        db.commit()
 
     # 2. Check RAG Context (Runs if use_rag is True OR if an attached file/document is detected)
     rag_context = ""
@@ -490,6 +565,22 @@ async def _handle_message_stream(
         db.commit()
         db.refresh(asst_msg)
 
+        # Intelligent title generation: replace snippet title after first exchange
+        if msg_count <= 2:
+            try:
+                generated_title = await _generate_title(
+                    user_message=msg_in.content,
+                    assistant_preview=complete_response[:200],
+                    llm=hosted_llm,
+                )
+                # Reload conv to avoid stale state
+                fresh_conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+                if fresh_conv:
+                    fresh_conv.title = generated_title
+                    db.commit()
+            except Exception:
+                pass  # Fallback title already set above; keep it
+
         # Send completion
         yield "data: [DONE]\n\n"
 
@@ -541,3 +632,39 @@ def set_message_feedback(
 
     db.commit()
     return {"status": "success", "feedback": msg.feedback}
+
+
+@router.post("/conversations/{conversation_id}/upload-document")
+async def upload_document_to_conversation(
+    conversation_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Uploads and indexes a document attached to a specific conversation.
+    Accepts: PDF, DOCX, TXT, CSV, JSON via multipart/form-data.
+    Returns: document_id, filename, file_type, file_size, total_chunks, status.
+    """
+    conv = db.query(Conversation).filter(
+        Conversation.id == conversation_id,
+        Conversation.user_id == current_user.id
+    ).first()
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    from server.app.api.documents import upload_document
+    doc = await upload_document(
+        file=file,
+        conversation_id=conversation_id,
+        db=db,
+        current_user=current_user
+    )
+    return {
+        "document_id": doc.id,
+        "filename": doc.filename,
+        "file_type": doc.file_type,
+        "file_size": doc.file_size,
+        "total_chunks": doc.total_chunks,
+        "status": "ready"
+    }

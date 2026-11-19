@@ -19,6 +19,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Database,
+  GraduationCap,
+  Briefcase,
+  BookOpen,
+  Bot,
+  Sliders,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -33,6 +38,11 @@ interface SidebarProps {
   onOpenSettings?: () => void;
   isOpen: boolean;
   onToggleOpen: () => void;
+  // Tool handlers (optional — sidebar Tools section)
+  onOpenInterviewer?: () => void;
+  onOpenLearningMode?: () => void;
+  onOpenPersonas?: () => void;
+  onOpenPromptLibrary?: () => void;
 }
 
 export default function Sidebar({
@@ -47,6 +57,10 @@ export default function Sidebar({
   onOpenSettings,
   isOpen,
   onToggleOpen,
+  onOpenInterviewer,
+  onOpenLearningMode,
+  onOpenPersonas,
+  onOpenPromptLibrary,
 }: SidebarProps) {
   const { user, logout, setAuthModalOpen } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
@@ -378,6 +392,56 @@ export default function Sidebar({
                 'No chats yet. Start a conversation!'
               )}
             </div>
+          )}
+        </div>
+
+        {/* Workspace Tools & Features */}
+        <div className="p-2 border-t border-zinc-200 dark:border-[#212121] flex flex-col gap-0.5 shrink-0 bg-white/50 dark:bg-[#111111]/40">
+          <div className="px-2 py-1 text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">
+            Workspace Tools
+          </div>
+          {onOpenLearningMode && (
+            <button
+              onClick={onOpenLearningMode}
+              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200/60 dark:hover:bg-[#1c1c1c] hover:text-zinc-900 dark:hover:text-white transition text-left"
+            >
+              <GraduationCap className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+              <span>Learning Modes</span>
+            </button>
+          )}
+          {onOpenInterviewer && (
+            <button
+              onClick={onOpenInterviewer}
+              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200/60 dark:hover:bg-[#1c1c1c] hover:text-zinc-900 dark:hover:text-white transition text-left"
+            >
+              <Briefcase className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+              <span>AI Interviewer</span>
+            </button>
+          )}
+          <button
+            onClick={onOpenDocuments}
+            className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200/60 dark:hover:bg-[#1c1c1c] hover:text-zinc-900 dark:hover:text-white transition text-left"
+          >
+            <BookOpen className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+            <span>Knowledge Base (Docs)</span>
+          </button>
+          {onOpenPersonas && (
+            <button
+              onClick={onOpenPersonas}
+              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200/60 dark:hover:bg-[#1c1c1c] hover:text-zinc-900 dark:hover:text-white transition text-left"
+            >
+              <Bot className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+              <span>AI Personas</span>
+            </button>
+          )}
+          {onOpenPromptLibrary && (
+            <button
+              onClick={onOpenPromptLibrary}
+              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200/60 dark:hover:bg-[#1c1c1c] hover:text-zinc-900 dark:hover:text-white transition text-left"
+            >
+              <Sliders className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+              <span>Prompt Library</span>
+            </button>
           )}
         </div>
 

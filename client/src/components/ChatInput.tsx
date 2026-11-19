@@ -24,6 +24,7 @@ interface ChatInputProps {
   disabled?: boolean;
   externalText?: string;
   onClearExternalText?: () => void;
+  conversationId?: string;
 }
 
 export default function ChatInput({
@@ -33,6 +34,7 @@ export default function ChatInput({
   disabled = false,
   externalText,
   onClearExternalText,
+  conversationId,
 }: ChatInputProps) {
   const [input, setInput] = useState('');
 
@@ -191,7 +193,44 @@ export default function ChatInput({
       <div className="max-w-3xl mx-auto">
         {/* Status / Preview Chips */}
         <div className="flex flex-wrap items-center gap-2 mb-2">
-          {selectedFile && (
+          {selectedFile && !imageDataUrl && (() => {
+            const ext = selectedFile.name.split('.').pop()?.toUpperCase() || 'FILE';
+            const badge =
+              ext === 'PDF' ? 'bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-300 border-red-300 dark:border-red-700/50' :
+              ext === 'DOCX' ? 'bg-blue-100 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700/50' :
+              ext === 'CSV' ? 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700/50' :
+              'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 border-zinc-300 dark:border-zinc-700';
+            const truncName = selectedFile.name.length > 24 ? selectedFile.name.slice(0, 24) + '…' : selectedFile.name;
+            const sizeKb = (selectedFile.size / 1024).toFixed(1);
+            return (
+              <div className="flex items-center gap-3 w-full max-w-sm px-3 py-2.5 rounded-xl bg-white dark:bg-[#1c1c1c] border border-zinc-200 dark:border-zinc-700 shadow-sm">
+                <div className="shrink-0 w-9 h-9 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
+                  {getFileIcon(selectedFile.name)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-zinc-900 dark:text-white truncate">{truncName}</span>
+                    <span className={`shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded border ${badge}`}>{ext}</span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-[10px] text-zinc-500 dark:text-zinc-400">{sizeKb} KB</span>
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                      Ready to upload
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => { setSelectedFile(null); setImageDataUrl(null); }}
+                  className="shrink-0 p-1 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-400 hover:text-rose-500 transition"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            );
+          })()}
+
+          {selectedFile && imageDataUrl && (
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-200 dark:bg-[#212121] border border-zinc-300 dark:border-zinc-700 text-xs text-zinc-800 dark:text-zinc-200">
               {getFileIcon(selectedFile.name)}
               <span className="font-medium truncate max-w-xs">{selectedFile.name}</span>
@@ -199,7 +238,7 @@ export default function ChatInput({
                 ({(selectedFile.size / 1024).toFixed(1)} KB)
               </span>
               <button
-                onClick={() => setSelectedFile(null)}
+                onClick={() => { setSelectedFile(null); setImageDataUrl(null); }}
                 className="p-0.5 hover:text-rose-500 text-zinc-400 rounded-full"
               >
                 <X className="w-3.5 h-3.5" />
