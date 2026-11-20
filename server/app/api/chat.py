@@ -336,93 +336,98 @@ async def _handle_message_stream(
     sources_list = []
     sources_json = None
 
-    # Determine attached filename: from request schema or extracted from content tags
-    import re
-    effective_filename = msg_in.attached_filename
-    if not effective_filename:
-        match = re.search(r'\[Attached Document:\s*([^\]]+)\]', msg_in.content)
-        if match:
-            effective_filename = match.group(1).strip()
+    try:
+        import re
+        effective_filename = msg_in.attached_filename
+        if not effective_filename:
+            match = re.search(r'\[Attached Document:\s*([^\]]+)\]', msg_in.content)
+            if match:
+                effective_filename = match.group(1).strip()
 
-    should_process_rag = bool(msg_in.use_rag or effective_filename)
+        # Check if this conversation has any attached document
+        conv_doc = db.query(Document).filter(
+            Document.user_id == current_user.id,
+            Document.conversation_id == conversation_id
+        ).order_by(Document.created_at.desc()).first()
 
-    if should_process_rag:
-        # If user explicitly attached a document or mentioned a filename, prioritize it
-        search_query = msg_in.content
-        if effective_filename:
-            search_query = f"{effective_filename} {msg_in.content}"
-        
-        # If query is generic like "explain attached file", look up the most recently uploaded document
-        is_generic_doc_query = any(phrase in msg_in.content.lower() for phrase in [
-            "attached file", "this document", "uploaded file", "this file", "explain the file",
-            "explain document", "summarize document", "summarize the file", "summarize this",
-            "what is in this", "what is in the file", "explain content", "explain the content",
-            "explain this document", "explain this file", "explain this"
-        ])
+        should_process_rag = bool(msg_in.use_rag or effective_filename or conv_doc is not None)
 
-        if effective_filename:
-            # 1. First look for a document attached to this specific conversation
-            target_doc = db.query(Document).filter(
-                Document.user_id == current_user.id,
-                Document.conversation_id == conversation_id,
-                Document.filename.ilike(f"%{effective_filename}%")
-            ).order_by(Document.created_at.desc()).first()
-            # 2. If not found, look across global documents
-            if not target_doc:
+        if should_process_rag:
+            search_query = msg_in.content
+            if effective_filename:
+                search_query = f"{effective_filename} {msg_in.content}"
+
+            # Identify if query is a broad/document-level request
+            is_generic_doc_query = any(phrase in (msg_in.content or "").lower() for phrase in [
+                "tell from it", "tell me from this", "tell from this", "from it", "from this",
+                "from document", "from doc", "from file", "attached file", "this document",
+                "uploaded file", "this file", "explain the file", "explain document",
+                "summarize document", "summarize the file", "summarize this", "summarize",
+                "what is in this", "what is in the file", "explain content", "explain the content",
+                "explain this document", "explain this file", "explain this", "what does it say"
+            ])
+
+            if effective_filename:
+                # 1. Look for document attached to this specific conversation
                 target_doc = db.query(Document).filter(
                     Document.user_id == current_user.id,
+                    Document.conversation_id == conversation_id,
                     Document.filename.ilike(f"%{effective_filename}%")
                 ).order_by(Document.created_at.desc()).first()
-        elif is_generic_doc_query:
-            # First check for any document attached to this conversation
-            target_doc = db.query(Document).filter(
-                Document.user_id == current_user.id,
-                Document.conversation_id == conversation_id
-            ).order_by(Document.created_at.desc()).first()
-            # If none attached to this conversation, default to latest global document
-            if not target_doc:
+                # 2. If not found, look across global documents
+                if not target_doc:
+                    target_doc = db.query(Document).filter(
+                        Document.user_id == current_user.id,
+                        Document.filename.ilike(f"%{effective_filename}%")
+                    ).order_by(Document.created_at.desc()).first()
+            elif conv_doc:
+                target_doc = conv_doc
+            elif is_generic_doc_query:
+                # Default to latest global document
                 target_doc = db.query(Document).filter(
                     Document.user_id == current_user.id
                 ).order_by(Document.created_at.desc()).first()
-        else:
-            target_doc = None
+            else:
+                target_doc = None
 
-        if target_doc:
-            doc_chunks = db.query(DocumentChunk).filter(
-                DocumentChunk.document_id == target_doc.id
-            ).order_by(DocumentChunk.chunk_index.asc()).limit(20).all()
+            if target_doc:
+                doc_chunks = db.query(DocumentChunk).filter(
+                    DocumentChunk.document_id == target_doc.id
+                ).order_by(DocumentChunk.chunk_index.asc()).limit(15).all()
 
-            if doc_chunks:
-                context_blocks = []
-                for c in doc_chunks:
-                    context_blocks.append(
-                        f"[Document: {target_doc.filename}, Page {c.page_number}]:\n{c.content}"
-                    )
-                rag_context = "\n\n".join(context_blocks)
+                if doc_chunks:
+                    context_blocks = []
+                    for c in doc_chunks:
+                        context_blocks.append(
+                            f"[Document: {target_doc.filename}, Page {c.page_number}]:\n{c.content}"
+                        )
+                    rag_context = "\n\n".join(context_blocks)
 
-                # Return clean, consolidated citations by grouping unique pages
-                pages = sorted(list(set(c.page_number for c in doc_chunks if c.page_number)))
-                pages_str = f"Pages {pages[0]}–{pages[-1]}" if len(pages) > 1 else f"Page {pages[0]}" if pages else "Document"
-                sources_list = [{
-                    "filename": target_doc.filename,
-                    "page": pages_str,
-                    "page_number": pages[0] if pages else 1,
-                    "similarity": 100.0,
-                    "score": 1.0,
-                    "snippet": f"{target_doc.filename} ({len(doc_chunks)} sections, {pages_str})"
-                }]
-                sources_json = json.dumps(sources_list, ensure_ascii=False)
+                    pages = sorted(list(set(c.page_number for c in doc_chunks if c.page_number)))
+                    pages_str = f"Pages {pages[0]}–{pages[-1]}" if len(pages) > 1 else f"Page {pages[0]}" if pages else "Document"
+                    sources_list = [{
+                        "filename": target_doc.filename,
+                        "page": pages_str,
+                        "page_number": pages[0] if pages else 1,
+                        "similarity": 100.0,
+                        "score": 1.0,
+                        "snippet": f"{target_doc.filename} ({len(doc_chunks)} sections, {pages_str})"
+                    }]
+                    sources_json = json.dumps(sources_list, ensure_ascii=False)
 
-        # If not satisfied by target_doc, perform semantic hybrid vector search
-        if not rag_context and msg_in.use_rag:
-            rag_context, sources_list = rag_service.search_user_documents(
-                db, current_user.id, search_query, top_k=12
-            )
-            if sources_list:
-                for s in sources_list:
-                    s["score"] = s.get("similarity", 100.0) / 100.0
-                    s["page_number"] = s.get("page", 1)
-                sources_json = json.dumps(sources_list, ensure_ascii=False)
+            # If not satisfied by target_doc, perform semantic hybrid/lexical search
+            if not rag_context and (msg_in.use_rag or conv_doc is not None):
+                rag_context, sources_list = rag_service.search_user_documents(
+                    db, current_user.id, search_query or "summarize key topics", top_k=10
+                )
+                if sources_list:
+                    for s in sources_list:
+                        s["score"] = s.get("similarity", 100.0) / 100.0
+                        s["page_number"] = s.get("page", 1)
+                    sources_json = json.dumps(sources_list, ensure_ascii=False)
+    except Exception as e:
+        import logging
+        logging.exception(f"RAG search encountered an error (continuing without RAG): {e}")
 
     # 3. Assemble Prompt Messages History
     history = db.query(Message).filter(Message.conversation_id == conversation_id).order_by(Message.created_at).all()

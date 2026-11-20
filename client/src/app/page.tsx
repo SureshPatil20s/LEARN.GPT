@@ -398,9 +398,11 @@ export default function Home() {
       ? `${modePrompt}\n\n${activePersona?.system_prompt || ''}`
       : activePersona?.system_prompt;
 
+    const effectiveContent = content.trim() || (attachedFile ? 'Please explain and summarize the contents of this attached document.' : '');
+
     await streamMessage({
       conversationId: convId,
-      content,
+      content: effectiveContent,
       model: selectedModel,
       useRag: attachedName ? true : useRag,
       useWebSearch: settings.use_web_search,
