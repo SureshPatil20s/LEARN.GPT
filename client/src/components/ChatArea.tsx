@@ -170,17 +170,32 @@ function MermaidDiagram({ code, id, isStreaming }: { code: string; id: string; i
 }
 function sanitizeMarkdownContent(raw: string): string {
   if (!raw) return '';
-  // 1. Strip technical notices or provider warnings
-  let cleaned = raw.replace(/\[\s*HuggingFace notice:[\s\S]*?\]/gi, '');
-  cleaned = cleaned.replace(/\*\[HuggingFace notice:[\s\S]*?\]\*/gi, '');
+  // 1. Strip technical notices or provider warnings (complete or streaming/incomplete)
+  let cleaned = raw.replace(/\[\s*HuggingFace notice:[\s\S]*?(\]|$)/gi, '');
+  cleaned = cleaned.replace(/\*\[HuggingFace notice:[\s\S]*?(\]\*|$)/gi, '');
   cleaned = cleaned.replace(/⚠️\s*HuggingFace API returned.*?\n\n/gi, '');
+  cleaned = cleaned.replace(/⚠️\s*HuggingFace error:.*?\n\n/gi, '');
 
-  // 2. Convert raw <br>, <br/>, <br /> into newlines so they don't print as raw text
-  cleaned = cleaned.replace(/<br\s*\/?>/gi, '\n');
+  // 2. Transform section keywords without markdown tags into prominent ## Headings
+  // Covers: TL;DR, Key Takeaways, Summary, Conclusion, In a Nutshell, Overview, Prerequisites, Next Steps, Core Idea
+  cleaned = cleaned.replace(/^(\s*)(TL;?DR|Key Takeaways|Summary|Conclusion|In a Nutshell|Key Concepts|Overview|Next Steps|Core Idea|Prerequisites):?\s*$/gim, '$1## $2');
+  cleaned = cleaned.replace(/^(\s*)\*\*(TL;?DR|Key Takeaways|Summary|Conclusion|In a Nutshell|Key Concepts|Overview|Next Steps|Core Idea|Prerequisites):?\*\*\s*$/gim, '$1## $2');
 
-  // 3. Fix unescaped literal \n inside text (e.g., xml\n<aiml...)
-  cleaned = cleaned.replace(/\\n/g, '\n');
+  // 3. Process line-by-line: preserve table row markup while converting <br> outside tables to real newlines
+  const lines = cleaned.split('\n');
+  const processedLines = lines.map((line) => {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+      // In table rows, keep <br/> for td custom renderer, convert literal \n to <br/>
+      return line.replace(/\\n/g, '<br/>');
+    }
+    // Outside tables: replace raw <br> with real newlines
+    let l = line.replace(/<br\s*\/?>/gi, '\n\n');
+    l = l.replace(/\\n/g, '\n');
+    return l;
+  });
 
+  cleaned = processedLines.join('\n');
   return cleaned.trim();
 }
 
@@ -312,80 +327,117 @@ export default function ChatArea({
   // ChatGPT-style Markdown Custom Components with GFM Tables
   const markdownComponents = {
     table: ({ children, ...props }: any) => (
-      <div className="my-4 w-full overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-xs">
-        <table className="w-full border-collapse text-left text-xs min-w-[440px]" {...props}>
+      <div className="my-6 w-full overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-xs bg-white dark:bg-[#141414]">
+        <table className="w-full border-collapse text-left text-xs min-w-[460px]" {...props}>
           {children}
         </table>
       </div>
     ),
     thead: ({ children, ...props }: any) => (
-      <thead className="bg-zinc-100 dark:bg-[#1f1f1f] text-zinc-800 dark:text-zinc-200 font-semibold border-b border-zinc-200 dark:border-zinc-800" {...props}>
+      <thead className="bg-zinc-100/90 dark:bg-[#1a1a1a] text-zinc-800 dark:text-zinc-200 font-semibold border-b border-zinc-200 dark:border-zinc-800" {...props}>
         {children}
       </thead>
     ),
     tbody: ({ children, ...props }: any) => (
-      <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800 bg-white dark:bg-[#161616]" {...props}>
+      <tbody className="divide-y divide-zinc-200/70 dark:divide-zinc-800/70 bg-white dark:bg-[#141414]" {...props}>
         {children}
       </tbody>
     ),
     tr: ({ children, ...props }: any) => (
-      <tr className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors" {...props}>
+      <tr className="hover:bg-zinc-50/80 dark:hover:bg-zinc-800/40 transition-colors" {...props}>
         {children}
       </tr>
     ),
     th: ({ children, ...props }: any) => (
-      <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-300" {...props}>
+      <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-300" {...props}>
         {children}
       </th>
     ),
-    td: ({ children, ...props }: any) => (
-      <td className="px-4 py-3 text-xs text-zinc-800 dark:text-zinc-200 leading-relaxed align-top whitespace-pre-line" {...props}>
-        {children}
-      </td>
-    ),
+    td: ({ children, ...props }: any) => {
+      // Helper to cleanly render cells that contain <br> tags or literal \n
+      const renderCellChild = (node: any, idx = 0): React.ReactNode => {
+        if (typeof node === 'string') {
+          if (/<br\s*\/?>/i.test(node)) {
+            const parts = node.split(/<br\s*\/?>/gi);
+            return parts.map((part, pIdx) => (
+              <React.Fragment key={`${idx}-${pIdx}`}>
+                {pIdx > 0 && <span className="block my-1.5" />}
+                {renderCellChild(part, pIdx)}
+              </React.Fragment>
+            ));
+          }
+          if (node.includes('\\n')) {
+            const parts = node.split('\\n');
+            return parts.map((part, pIdx) => (
+              <React.Fragment key={`${idx}-${pIdx}`}>
+                {pIdx > 0 && <span className="block my-1.5" />}
+                {renderCellChild(part, pIdx)}
+              </React.Fragment>
+            ));
+          }
+          return node;
+        }
+        if (Array.isArray(node)) {
+          return node.map((c, cIdx) => renderCellChild(c, cIdx));
+        }
+        return node;
+      };
+
+      return (
+        <td className="px-4 py-3 text-xs text-zinc-800 dark:text-zinc-200 leading-relaxed align-top" {...props}>
+          {renderCellChild(children)}
+        </td>
+      );
+    },
     br: () => <br className="my-1" />,
     blockquote: ({ children, ...props }: any) => (
-      <blockquote className="my-3 border-l-4 border-emerald-500 bg-zinc-50 dark:bg-zinc-900/60 pl-4 py-2 text-zinc-600 dark:text-zinc-400 italic rounded-r-lg text-sm" {...props}>
+      <blockquote className="my-5 border-l-4 border-emerald-500 bg-emerald-500/10 dark:bg-emerald-950/25 border border-emerald-500/20 rounded-r-xl p-4 text-zinc-800 dark:text-zinc-200 italic text-sm shadow-xs" {...props}>
         {children}
       </blockquote>
     ),
     h1: ({ children, ...props }: any) => (
-      <h1 className="text-xl font-bold text-zinc-900 dark:text-white mt-6 mb-3 tracking-tight" {...props}>
-        {children}
-      </h1>
+      <div className="mt-8 mb-4 pt-4 border-t-2 border-emerald-500/30">
+        <h1 className="text-xl md:text-2xl font-extrabold text-zinc-900 dark:text-white tracking-tight flex items-center gap-2.5" {...props}>
+          <span className="w-2.5 h-6 rounded-sm bg-emerald-500 inline-block shrink-0" />
+          <span>{children}</span>
+        </h1>
+      </div>
     ),
     h2: ({ children, ...props }: any) => (
-      <h2 className="text-lg font-bold text-zinc-900 dark:text-white mt-5 mb-2.5 tracking-tight border-b border-zinc-200/60 dark:border-zinc-800/60 pb-1" {...props}>
-        {children}
-      </h2>
+      <div className="mt-8 mb-4 pt-3.5 border-t border-zinc-200/80 dark:border-zinc-800/80">
+        <h2 className="text-base md:text-lg font-bold text-zinc-900 dark:text-zinc-100 tracking-tight border-l-4 border-emerald-500 pl-3.5 pr-3 py-1.5 bg-gradient-to-r from-emerald-500/15 via-emerald-500/5 to-transparent dark:from-emerald-500/20 rounded-r-lg flex items-center gap-2 shadow-xs" {...props}>
+          {children}
+        </h2>
+      </div>
     ),
     h3: ({ children, ...props }: any) => (
-      <h3 className="text-base font-semibold text-zinc-900 dark:text-white mt-4 mb-2 tracking-tight" {...props}>
-        {children}
+      <h3 className="text-sm font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 mt-6 mb-2.5 flex items-center gap-2" {...props}>
+        <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 inline-block" />
+        <span>{children}</span>
       </h3>
     ),
     ul: ({ children, ...props }: any) => (
-      <ul className="list-disc list-outside pl-5 my-2.5 space-y-1.5 text-zinc-800 dark:text-zinc-200 text-sm" {...props}>
+      <ul className="list-disc list-outside pl-6 my-4 space-y-2.5 text-zinc-700 dark:text-zinc-300 text-sm leading-relaxed" {...props}>
         {children}
       </ul>
     ),
     ol: ({ children, ...props }: any) => (
-      <ol className="list-decimal list-outside pl-5 my-2.5 space-y-1.5 text-zinc-800 dark:text-zinc-200 text-sm" {...props}>
+      <ol className="list-decimal list-outside pl-6 my-4 space-y-2.5 text-zinc-700 dark:text-zinc-300 text-sm leading-relaxed" {...props}>
         {children}
       </ol>
     ),
     li: ({ children, ...props }: any) => (
-      <li className="leading-relaxed" {...props}>
+      <li className="leading-relaxed pl-1" {...props}>
         {children}
       </li>
     ),
     p: ({ children, ...props }: any) => (
-      <p className="my-2.5 leading-relaxed text-zinc-800 dark:text-zinc-200 text-sm" {...props}>
+      <p className="mb-4 leading-7 text-zinc-700 dark:text-zinc-300 text-sm font-normal" {...props}>
         {children}
       </p>
     ),
     hr: (props: any) => (
-      <hr className="my-5 border-zinc-200 dark:border-zinc-800" {...props} />
+      <hr className="my-8 border-t-2 border-dashed border-zinc-200 dark:border-zinc-800" {...props} />
     ),
     a: ({ children, href, ...props }: any) => (
       <a href={href} target="_blank" rel="noopener noreferrer" className="text-emerald-600 dark:text-emerald-400 hover:underline font-medium" {...props}>

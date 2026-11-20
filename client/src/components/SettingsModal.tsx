@@ -140,13 +140,20 @@ export default function SettingsModal({
           </button>
           <button
             onClick={() => setActiveTab('general')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
               activeTab === 'general'
                 ? 'bg-emerald-600 text-white shadow-sm'
                 : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800/60'
             }`}
           >
-            General & Account
+            <span>General & Personalization</span>
+            {memories.length > 0 && (
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                activeTab === 'general' ? 'bg-white/20 text-white' : 'bg-purple-500/20 text-purple-600 dark:text-purple-300'
+              }`}>
+                {memories.length}
+              </span>
+            )}
           </button>
           <button
             onClick={() => setActiveTab('model')}
@@ -349,12 +356,21 @@ export default function SettingsModal({
                   </button>
                 </div>
 
-                {/* Cross-Chat Memory Toggle */}
+                {/* Cross-Chat Memory Quick Toggle & Shortcut */}
                 <div className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-[#121212] flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <Brain className="w-4 h-4 text-purple-500" />
                     <div>
-                      <span className="text-xs font-semibold text-zinc-900 dark:text-white">Persistent Cross-Chat Memory</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-zinc-900 dark:text-white">Cross-Chat Memory</span>
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('general')}
+                          className="text-[10px] text-purple-600 dark:text-purple-400 hover:underline font-semibold"
+                        >
+                          View Summary &rarr;
+                        </button>
+                      </div>
                       <p className="text-[11px] text-zinc-500">Inject saved personal context &amp; preferences into chats</p>
                     </div>
                   </div>
@@ -373,7 +389,7 @@ export default function SettingsModal({
             </div>
           )}
 
-          {/* TAB 2: GENERAL & THEME */}
+          {/* TAB 2: GENERAL & PERSONALIZATION */}
           {activeTab === 'general' && (
             <div className="space-y-5">
               {/* Appearance Setting */}
@@ -411,79 +427,136 @@ export default function SettingsModal({
                 </div>
               )}
 
-              {/* Persistent Cross-Chat Memory Management */}
-              <div className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-[#121212] space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Brain className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                    <h4 className="text-xs font-bold text-zinc-900 dark:text-white">
-                      Persistent Cross-Chat Memories ({memories.length})
-                    </h4>
+              {/* ChatGPT-style Memory & Personalization Summary */}
+              <div className="p-4 rounded-2xl border border-purple-500/30 bg-gradient-to-b from-purple-500/5 via-transparent to-transparent dark:from-purple-950/20 dark:to-transparent space-y-4 shadow-xs">
+                {/* Header & Status */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-purple-600/10 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0 border border-purple-500/20">
+                      <Brain className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-sm font-bold text-zinc-900 dark:text-white">
+                          What LEARN.GPT Remembers About You
+                        </h4>
+                        {settings.use_memory ? (
+                          <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            {memories.filter((m) => m.is_active).length} Active Facts
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-zinc-200 dark:bg-zinc-800 text-zinc-500">
+                            Memory Paused
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-zinc-500 mt-0.5">
+                        Facts and preferences LEARN.GPT applies across all your chats to personalize answers.
+                      </p>
+                    </div>
                   </div>
-                  {memories.length > 0 && (
-                    <button
-                      onClick={async () => {
-                        if (confirm('Clear all stored persistent memories?')) {
-                          await onClearAllMemories();
-                        }
-                      }}
-                      className="text-[11px] text-rose-500 hover:underline"
-                    >
-                      Clear All
-                    </button>
-                  )}
+                  {/* Master Toggle */}
+                  <button
+                    onClick={() => onUpdateSettings({ use_memory: !settings.use_memory })}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition shrink-0 ${
+                      settings.use_memory
+                        ? 'bg-purple-600 text-white border-purple-500 shadow-xs hover:bg-purple-500'
+                        : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-200'
+                    }`}
+                    title={settings.use_memory ? 'Click to pause memory in chats' : 'Click to enable memory in chats'}
+                  >
+                    {settings.use_memory ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
+                    <span>{settings.use_memory ? 'Enabled' : 'Paused'}</span>
+                  </button>
                 </div>
-                <p className="text-[11px] text-zinc-500">
-                  Facts and preferences the AI remembers across conversations (e.g. &ldquo;I prefer concise TypeScript code&rdquo;).
-                </p>
 
-                {/* Add New Memory Form */}
-                <form onSubmit={handleAddMemorySubmit} className="flex gap-2">
+                {/* Quick Add Starter Suggestions */}
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+                    Quick Personalization Starters:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      'Prefer Python code examples',
+                      'I am a Computer Science student',
+                      'Explain step-by-step with examples',
+                      'Keep explanations concise & direct',
+                    ].map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        onClick={async () => {
+                          await onAddMemory(suggestion);
+                        }}
+                        className="text-[11px] px-2.5 py-1 rounded-lg bg-zinc-100 dark:bg-zinc-800/80 hover:bg-purple-50 hover:text-purple-600 dark:hover:bg-purple-950/40 dark:hover:text-purple-300 border border-zinc-200/80 dark:border-zinc-700/80 text-zinc-700 dark:text-zinc-300 transition"
+                      >
+                        + {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Add New Memory Input */}
+                <form onSubmit={handleAddMemorySubmit} className="flex gap-2 pt-1">
                   <input
                     type="text"
                     value={newMemoryText}
                     onChange={(e) => setNewMemoryText(e.target.value)}
-                    placeholder="Remember: e.g. I am a student learning machine learning..."
-                    className="flex-1 bg-white dark:bg-[#1c1c1c] border border-zinc-300 dark:border-zinc-800 rounded-xl px-3 py-1.5 text-xs text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:border-purple-500"
+                    placeholder="Tell LEARN.GPT what to remember (e.g. 'I am preparing for frontend interviews')..."
+                    className="flex-1 bg-white dark:bg-[#181818] border border-zinc-300 dark:border-zinc-700/80 rounded-xl px-3.5 py-2 text-xs text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 shadow-xs"
                   />
                   <button
                     type="submit"
                     disabled={isAddingMemory || !newMemoryText.trim()}
-                    className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs transition disabled:opacity-50 shrink-0"
+                    className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs transition disabled:opacity-50 shrink-0 shadow-xs flex items-center gap-1.5"
                   >
-                    Add Fact
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>{isAddingMemory ? 'Saving...' : 'Remember'}</span>
                   </button>
                 </form>
 
-                {/* Memory Items List */}
-                <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                {/* Stored Memories List */}
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                   {memories.length === 0 ? (
-                    <p className="text-xs text-zinc-400 italic py-2 text-center">
-                      No memories stored yet. Add facts above for the AI to remember!
-                    </p>
+                    <div className="p-4 rounded-xl border border-dashed border-zinc-300 dark:border-zinc-800 text-center space-y-1 bg-white/50 dark:bg-[#141414]/50">
+                      <Sparkles className="w-5 h-5 text-purple-400 mx-auto" />
+                      <p className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                        No persistent memories stored yet
+                      </p>
+                      <p className="text-[11px] text-zinc-400">
+                        Add facts above or click one of the quick starters to personalize your AI responses.
+                      </p>
+                    </div>
                   ) : (
                     memories.map((m) => (
                       <div
                         key={m.id}
-                        className="flex items-center justify-between gap-2 p-2 rounded-lg bg-white dark:bg-[#1a1a1a] border border-zinc-200 dark:border-zinc-800 text-xs"
+                        className="group flex items-center justify-between gap-3 p-2.5 rounded-xl bg-white dark:bg-[#181818] border border-zinc-200 dark:border-zinc-800 hover:border-purple-500/40 transition shadow-2xs text-xs"
                       >
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <div className="flex items-center gap-2.5 flex-1 min-w-0">
                           <button
                             onClick={() => onToggleMemory(m.id)}
-                            className={`p-0.5 rounded transition ${
+                            className={`shrink-0 transition ${
                               m.is_active ? 'text-purple-600 dark:text-purple-400' : 'text-zinc-400'
                             }`}
                             title={m.is_active ? 'Active (Click to mute)' : 'Muted (Click to activate)'}
                           >
                             {m.is_active ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
                           </button>
-                          <span className={`truncate ${m.is_active ? 'text-zinc-800 dark:text-zinc-200' : 'text-zinc-400 line-through'}`}>
+                          <span
+                            className={`flex-1 break-words ${
+                              m.is_active
+                                ? 'text-zinc-800 dark:text-zinc-200 font-medium'
+                                : 'text-zinc-400 line-through'
+                            }`}
+                          >
                             {m.content}
                           </span>
                         </div>
                         <button
                           onClick={() => onDeleteMemory(m.id)}
-                          className="p-1 text-zinc-400 hover:text-rose-500 transition shrink-0"
+                          className="p-1 text-zinc-400 hover:text-rose-500 transition shrink-0 opacity-80 group-hover:opacity-100"
                           title="Forget memory"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -492,6 +565,23 @@ export default function SettingsModal({
                     ))
                   )}
                 </div>
+
+                {/* Footer: Clear All */}
+                {memories.length > 0 && (
+                  <div className="flex justify-end pt-1 border-t border-zinc-200/50 dark:border-zinc-800/50">
+                    <button
+                      onClick={async () => {
+                        if (confirm('Clear all stored persistent memories? This cannot be undone.')) {
+                          await onClearAllMemories();
+                        }
+                      }}
+                      className="text-[11px] text-rose-500 hover:text-rose-600 dark:hover:text-rose-400 hover:underline font-medium flex items-center gap-1"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      <span>Clear All Memories ({memories.length})</span>
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Danger Zone */}

@@ -128,6 +128,11 @@ export default function Home() {
     }
   }, []);
 
+  const handleOpenSettings = useCallback(() => {
+    refreshMemories();
+    setSettingsModalOpen(true);
+  }, [refreshMemories]);
+
   // Load Models & Check Backend Connectivity
   useEffect(() => {
     getAvailableModels()
@@ -522,7 +527,7 @@ export default function Home() {
         onRenameConversation={handleRenameConversation}
         onTogglePin={handleTogglePin}
         onOpenDocuments={() => setDocModalOpen(true)}
-        onOpenSettings={() => setSettingsModalOpen(true)}
+        onOpenSettings={handleOpenSettings}
         isOpen={sidebarOpen}
         onToggleOpen={() => setSidebarOpen((prev) => !prev)}
         onOpenInterviewer={() => setInterviewerModalOpen(true)}
@@ -539,7 +544,7 @@ export default function Home() {
           models={models}
           selectedModel={selectedModel}
           onSelectModel={setSelectedModel}
-          onOpenSettings={() => setSettingsModalOpen(true)}
+          onOpenSettings={handleOpenSettings}
         />
 
         {/* Backend Offline Notice */}
