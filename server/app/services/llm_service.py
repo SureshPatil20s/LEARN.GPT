@@ -376,7 +376,6 @@ class IntelligentRouter:
                     yield chunk
                     yielded_gemini = True
             if not yielded_gemini:
-                yield "*[Gemini unavailable — auto-switched to Groq LPU fallback]*\n\n"
                 async for chunk in self._stream_groq_text(clean_messages, temperature, max_tokens):
                     yield chunk
             return
@@ -390,7 +389,6 @@ class IntelligentRouter:
 
         # 2. Seamless fallback to Gemini if Groq is unavailable or exhausted
         if not yielded_groq and self.circuit_breaker.gemini_available() and self.gemini_api_key:
-            yield "*[Groq quota reached — auto-switched to Gemini fallback]*\n\n"
             async for chunk in self._stream_gemini_text(clean_messages, temperature, max_tokens):
                 yield chunk
 
@@ -403,8 +401,9 @@ class IntelligentRouter:
         """Stream text from HuggingFace Inference API — Qwen/Qwen2.5-1.5B-Instruct."""
         HF_CHAT_URL = "https://api-inference.huggingface.co/models/Qwen/Qwen2.5-1.5B-Instruct/v1/chat/completions"
         if not self.hf_token:
-            yield "ℹ️ *[Qwen 2.5 1.5B via Hugging Face — note: HF_TOKEN not set in environment. Auto-routing to fallback]*\n\n"
-            async for chunk in self._stream_groq_text(messages, temperature, max_tokens):
+            import logging
+            logging.info("HF_TOKEN not set; routing Qwen request directly to Groq fallback")
+            async for chunk in self._stream_groq_text(messages, temperature, max_tokens, preferred_model="qwen/qwen3.8-27b"):
                 yield chunk
             return
 
@@ -427,12 +426,12 @@ class IntelligentRouter:
                     HF_CHAT_URL,
                     json=payload,
                     headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=60),
+                    timeout=aiohttp.ClientTimeout(total=30),
                 ) as resp:
                     if resp.status != 200:
-                        body = await resp.text()
-                        yield f"⚠️ HuggingFace API returned {resp.status}. Auto-switching to backup model:\n\n"
-                        async for chunk in self._stream_groq_text(messages, temperature, max_tokens):
+                        import logging
+                        logging.warning(f"HuggingFace API returned {resp.status}; falling back to Groq")
+                        async for chunk in self._stream_groq_text(messages, temperature, max_tokens, preferred_model="qwen/qwen3.8-27b"):
                             yield chunk
                         return
 
@@ -453,14 +452,16 @@ class IntelligentRouter:
                             except (json.JSONDecodeError, IndexError, KeyError):
                                 continue
         except asyncio.TimeoutError:
+            import logging
+            logging.warning("HuggingFace Qwen model timed out; falling back to Groq")
             if not yielded_any:
-                yield "\n\n⚠️ HuggingFace Qwen model timed out. Auto-routing to backup model:\n\n"
-                async for chunk in self._stream_groq_text(messages, temperature, max_tokens):
+                async for chunk in self._stream_groq_text(messages, temperature, max_tokens, preferred_model="qwen/qwen3.8-27b"):
                     yield chunk
         except Exception as e:
+            import logging
+            logging.warning(f"HuggingFace error: {e}; falling back to Groq")
             if not yielded_any:
-                yield f"\n\n*[HuggingFace notice: {str(e)} — auto-routing to backup]*\n\n"
-                async for chunk in self._stream_groq_text(messages, temperature, max_tokens):
+                async for chunk in self._stream_groq_text(messages, temperature, max_tokens, preferred_model="qwen/qwen3.8-27b"):
                     yield chunk
 
     async def _stream_gemini_text(

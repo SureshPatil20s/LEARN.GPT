@@ -168,6 +168,22 @@ function MermaidDiagram({ code, id, isStreaming }: { code: string; id: string; i
     </div>
   );
 }
+function sanitizeMarkdownContent(raw: string): string {
+  if (!raw) return '';
+  // 1. Strip technical notices or provider warnings
+  let cleaned = raw.replace(/\[\s*HuggingFace notice:[\s\S]*?\]/gi, '');
+  cleaned = cleaned.replace(/\*\[HuggingFace notice:[\s\S]*?\]\*/gi, '');
+  cleaned = cleaned.replace(/⚠️\s*HuggingFace API returned.*?\n\n/gi, '');
+
+  // 2. Convert raw <br>, <br/>, <br /> into newlines so they don't print as raw text
+  cleaned = cleaned.replace(/<br\s*\/?>/gi, '\n');
+
+  // 3. Fix unescaped literal \n inside text (e.g., xml\n<aiml...)
+  cleaned = cleaned.replace(/\\n/g, '\n');
+
+  return cleaned.trim();
+}
+
 interface ChatAreaProps {
   messages: Message[];
   isStreaming: boolean;
@@ -323,10 +339,11 @@ export default function ChatArea({
       </th>
     ),
     td: ({ children, ...props }: any) => (
-      <td className="px-4 py-2.5 text-xs text-zinc-800 dark:text-zinc-200 leading-normal" {...props}>
+      <td className="px-4 py-3 text-xs text-zinc-800 dark:text-zinc-200 leading-relaxed align-top whitespace-pre-line" {...props}>
         {children}
       </td>
     ),
+    br: () => <br className="my-1" />,
     blockquote: ({ children, ...props }: any) => (
       <blockquote className="my-3 border-l-4 border-emerald-500 bg-zinc-50 dark:bg-zinc-900/60 pl-4 py-2 text-zinc-600 dark:text-zinc-400 italic rounded-r-lg text-sm" {...props}>
         {children}
@@ -487,7 +504,7 @@ export default function ChatArea({
                     remarkPlugins={[remarkGfm]}
                     components={markdownComponents}
                   >
-                    {msg.content}
+                    {sanitizeMarkdownContent(msg.content)}
                   </ReactMarkdown>
                 </div>
 
@@ -605,7 +622,7 @@ export default function ChatArea({
                   remarkPlugins={[remarkGfm]}
                   components={markdownComponents}
                 >
-                  {streamingContent}
+                  {sanitizeMarkdownContent(streamingContent)}
                 </ReactMarkdown>
                 <span className="inline-block w-2 h-4 bg-emerald-500 dark:bg-emerald-400 animate-pulse ml-1 translate-y-0.5" />
               </div>

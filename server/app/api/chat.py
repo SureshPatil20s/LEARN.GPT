@@ -473,6 +473,17 @@ async def _handle_message_stream(
             "3. If the user explicitly asks for something from their uploaded documents that is not in the excerpts, let them know clearly."
         )
 
+    # 3c. Strict Professional Output & Formatting Rules (ChatGPT Reference Standard)
+    system_text += (
+        "\n\n[RESPONSE FORMATTING & STYLING RULES — STRICT]:\n"
+        "1. CLEAN STRUCTURE: Organize explanations with clear markdown headings (##, ###), readable paragraphs, and bullet points.\n"
+        "2. TABLES POLICY: Use markdown tables ONLY for concise comparisons or structured attribute lists with short text values (1-2 short sentences maximum per cell). "
+        "NEVER place code snippets, XML/JSON blocks, multi-step tutorials, or long paragraphs inside table cells.\n"
+        "3. STANDALONE CODE BLOCKS: Always format code, commands, XML, HTML, scripts, and file examples in their own standalone fenced code blocks outside of any table, using the proper language tag (e.g. ```xml ... ``` or ```python ... ```). Never cram code or multi-line markup into a table cell.\n"
+        "4. NO RAW HTML: Never use raw HTML tags such as `<br>`, `<br/>`, or `<div>`. Use natural markdown line breaks and paragraphs.\n"
+        "5. STEP-BY-STEP GUIDES: Provide setup, installation, or procedural steps using standard numbered lists (1., 2., 3.) in the main text, with fenced code blocks beneath each step."
+    )
+
     llm_messages = [{"role": "system", "content": system_text}]
     for m in history[-8:]:  # Sliding window of last 8 turns
         if m.content and m.content.strip():
