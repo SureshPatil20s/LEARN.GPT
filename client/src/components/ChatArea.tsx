@@ -396,19 +396,15 @@ export default function ChatArea({
       </blockquote>
     ),
     h1: ({ children, ...props }: any) => (
-      <div className="mt-8 mb-4 pt-4 border-t-2 border-emerald-500/30">
-        <h1 className="text-xl md:text-2xl font-extrabold text-zinc-900 dark:text-white tracking-tight flex items-center gap-2.5" {...props}>
-          <span className="w-2.5 h-6 rounded-sm bg-emerald-500 inline-block shrink-0" />
-          <span>{children}</span>
-        </h1>
-      </div>
+      <h1 className="mt-8 mb-4 pt-3 border-t-2 border-emerald-500/30 text-xl md:text-2xl font-extrabold text-zinc-900 dark:text-white tracking-tight flex items-center gap-2.5" {...props}>
+        <span className="w-2.5 h-6 rounded-sm bg-emerald-500 inline-block shrink-0" />
+        <span>{children}</span>
+      </h1>
     ),
     h2: ({ children, ...props }: any) => (
-      <div className="mt-8 mb-4 pt-3.5 border-t border-zinc-200/80 dark:border-zinc-800/80">
-        <h2 className="text-base md:text-lg font-bold text-zinc-900 dark:text-zinc-100 tracking-tight border-l-4 border-emerald-500 pl-3.5 pr-3 py-1.5 bg-gradient-to-r from-emerald-500/15 via-emerald-500/5 to-transparent dark:from-emerald-500/20 rounded-r-lg flex items-center gap-2 shadow-xs" {...props}>
-          {children}
-        </h2>
-      </div>
+      <h2 className="mt-8 mb-4 pt-3.5 border-t border-zinc-200/80 dark:border-zinc-800/80 text-base md:text-lg font-bold text-zinc-900 dark:text-zinc-100 tracking-tight border-l-4 border-emerald-500 pl-3.5 pr-3 py-1.5 bg-gradient-to-r from-emerald-500/15 via-emerald-500/5 to-transparent dark:from-emerald-500/20 rounded-r-lg flex items-center gap-2 shadow-xs" {...props}>
+        {children}
+      </h2>
     ),
     h3: ({ children, ...props }: any) => (
       <h3 className="text-sm font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 mt-6 mb-2.5 flex items-center gap-2" {...props}>
@@ -489,9 +485,9 @@ export default function ChatArea({
 
           if (isUser) {
             const docMatch = msg.content.match(/^(?:📄\s*)?\*\*\[Attached Document:\s*([^\]]+)\]\*\*(?:\n\n)?([\s\S]*)$/i) ||
-                             msg.content.match(/^\[Attached Document:\s*([^\]]+)\](?:\n\n)?([\s\S]*)$/i);
+              msg.content.match(/^\[Attached Document:\s*([^\]]+)\](?:\n\n)?([\s\S]*)$/i);
             const imgMatch = msg.content.match(/^(?:🖼️\s*)?\*\*\[Attached Image\]\*\*(?:\n\n)?([\s\S]*)$/i) ||
-                             msg.content.match(/^\[Attached Image\](?:\n\n)?([\s\S]*)$/i);
+              msg.content.match(/^\[Attached Image\](?:\n\n)?([\s\S]*)$/i);
 
             const hasAttachment = Boolean(docMatch || imgMatch);
             const filename = docMatch ? docMatch[1].trim() : imgMatch ? 'Attached Image' : null;
@@ -501,9 +497,9 @@ export default function ChatArea({
             const ext = filename && filename.includes('.') ? filename.split('.').pop()?.toUpperCase() : isDoc ? 'DOC' : 'IMG';
             const badgeColor =
               ext === 'PDF' ? 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20' :
-              ext === 'DOCX' ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20' :
-              ext === 'CSV' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' :
-              'bg-zinc-500/10 text-zinc-600 dark:text-zinc-400 border-zinc-500/20';
+                ext === 'DOCX' ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20' :
+                  ext === 'CSV' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' :
+                    'bg-zinc-500/10 text-zinc-600 dark:text-zinc-400 border-zinc-500/20';
 
             return (
               <div key={msg.id || index} className="flex justify-end mb-4">
@@ -635,9 +631,8 @@ export default function ChatArea({
 
                   <button
                     onClick={() => onFeedback(msg.id, 'like')}
-                    className={`p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 transition ${
-                      msg.feedback === 'like' ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950/40' : 'hover:text-zinc-900 dark:hover:text-zinc-200'
-                    }`}
+                    className={`p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 transition ${msg.feedback === 'like' ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950/40' : 'hover:text-zinc-900 dark:hover:text-zinc-200'
+                      }`}
                     title="Helpful response"
                   >
                     <ThumbsUp className="w-3.5 h-3.5" />
@@ -645,9 +640,8 @@ export default function ChatArea({
 
                   <button
                     onClick={() => onFeedback(msg.id, 'dislike')}
-                    className={`p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 transition ${
-                      msg.feedback === 'dislike' ? 'text-rose-600 dark:text-rose-400 bg-rose-100 dark:bg-rose-950/40' : 'hover:text-zinc-900 dark:hover:text-zinc-200'
-                    }`}
+                    className={`p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 transition ${msg.feedback === 'dislike' ? 'text-rose-600 dark:text-rose-400 bg-rose-100 dark:bg-rose-950/40' : 'hover:text-zinc-900 dark:hover:text-zinc-200'
+                      }`}
                     title="Unhelpful response"
                   >
                     <ThumbsDown className="w-3.5 h-3.5" />

@@ -130,38 +130,34 @@ export default function SettingsModal({
         <div className="flex gap-2 border-b border-zinc-200 dark:border-zinc-800 pb-3 mb-4 shrink-0">
           <button
             onClick={() => setActiveTab('workspace')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition ${
-              activeTab === 'workspace'
-                ? 'bg-emerald-600 text-white shadow-sm'
-                : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800/60'
-            }`}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition ${activeTab === 'workspace'
+              ? 'bg-emerald-600 text-white shadow-sm'
+              : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800/60'
+              }`}
           >
             Workspace & Tools
           </button>
           <button
             onClick={() => setActiveTab('general')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
-              activeTab === 'general'
-                ? 'bg-emerald-600 text-white shadow-sm'
-                : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800/60'
-            }`}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${activeTab === 'general'
+              ? 'bg-emerald-600 text-white shadow-sm'
+              : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800/60'
+              }`}
           >
             <span>General & Personalization</span>
             {memories.length > 0 && (
-              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                activeTab === 'general' ? 'bg-white/20 text-white' : 'bg-purple-500/20 text-purple-600 dark:text-purple-300'
-              }`}>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${activeTab === 'general' ? 'bg-white/20 text-white' : 'bg-purple-500/20 text-purple-600 dark:text-purple-300'
+                }`}>
                 {memories.length}
               </span>
             )}
           </button>
           <button
             onClick={() => setActiveTab('model')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition ${
-              activeTab === 'model'
-                ? 'bg-emerald-600 text-white shadow-sm'
-                : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800/60'
-            }`}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition ${activeTab === 'model'
+              ? 'bg-emerald-600 text-white shadow-sm'
+              : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800/60'
+              }`}
           >
             Model & Parameters
           </button>
@@ -325,11 +321,10 @@ export default function SettingsModal({
                   </div>
                   <button
                     onClick={() => onUpdateSettings({ use_web_search: !settings.use_web_search })}
-                    className={`p-1.5 rounded-xl border transition ${
-                      settings.use_web_search
-                        ? 'bg-blue-600 text-white border-blue-500'
-                        : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-400 border-zinc-300 dark:border-zinc-700'
-                    }`}
+                    className={`p-1.5 rounded-xl border transition ${settings.use_web_search
+                      ? 'bg-blue-600 text-white border-blue-500'
+                      : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-400 border-zinc-300 dark:border-zinc-700'
+                      }`}
                   >
                     {settings.use_web_search ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
                   </button>
@@ -346,11 +341,10 @@ export default function SettingsModal({
                   </div>
                   <button
                     onClick={() => onUpdateSettings({ use_rag: !settings.use_rag })}
-                    className={`p-1.5 rounded-xl border transition ${
-                      settings.use_rag
-                        ? 'bg-emerald-600 text-white border-emerald-500'
-                        : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-400 border-zinc-300 dark:border-zinc-700'
-                    }`}
+                    className={`p-1.5 rounded-xl border transition ${settings.use_rag
+                      ? 'bg-emerald-600 text-white border-emerald-500'
+                      : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-400 border-zinc-300 dark:border-zinc-700'
+                      }`}
                   >
                     {settings.use_rag ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
                   </button>
@@ -376,11 +370,10 @@ export default function SettingsModal({
                   </div>
                   <button
                     onClick={() => onUpdateSettings({ use_memory: !settings.use_memory })}
-                    className={`p-1.5 rounded-xl border transition ${
-                      settings.use_memory
-                        ? 'bg-purple-600 text-white border-purple-500'
-                        : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-400 border-zinc-300 dark:border-zinc-700'
-                    }`}
+                    className={`p-1.5 rounded-xl border transition ${settings.use_memory
+                      ? 'bg-purple-600 text-white border-purple-500'
+                      : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-400 border-zinc-300 dark:border-zinc-700'
+                      }`}
                   >
                     {settings.use_memory ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
                   </button>
@@ -459,11 +452,10 @@ export default function SettingsModal({
                   {/* Master Toggle */}
                   <button
                     onClick={() => onUpdateSettings({ use_memory: !settings.use_memory })}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition shrink-0 ${
-                      settings.use_memory
-                        ? 'bg-purple-600 text-white border-purple-500 shadow-xs hover:bg-purple-500'
-                        : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-200'
-                    }`}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition shrink-0 ${settings.use_memory
+                      ? 'bg-purple-600 text-white border-purple-500 shadow-xs hover:bg-purple-500'
+                      : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-200'
+                      }`}
                     title={settings.use_memory ? 'Click to pause memory in chats' : 'Click to enable memory in chats'}
                   >
                     {settings.use_memory ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
@@ -537,19 +529,17 @@ export default function SettingsModal({
                         <div className="flex items-center gap-2.5 flex-1 min-w-0">
                           <button
                             onClick={() => onToggleMemory(m.id)}
-                            className={`shrink-0 transition ${
-                              m.is_active ? 'text-purple-600 dark:text-purple-400' : 'text-zinc-400'
-                            }`}
+                            className={`shrink-0 transition ${m.is_active ? 'text-purple-600 dark:text-purple-400' : 'text-zinc-400'
+                              }`}
                             title={m.is_active ? 'Active (Click to mute)' : 'Muted (Click to activate)'}
                           >
                             {m.is_active ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
                           </button>
                           <span
-                            className={`flex-1 break-words ${
-                              m.is_active
-                                ? 'text-zinc-800 dark:text-zinc-200 font-medium'
-                                : 'text-zinc-400 line-through'
-                            }`}
+                            className={`flex-1 break-words ${m.is_active
+                              ? 'text-zinc-800 dark:text-zinc-200 font-medium'
+                              : 'text-zinc-400 line-through'
+                              }`}
                           >
                             {m.content}
                           </span>
@@ -666,11 +656,10 @@ export default function SettingsModal({
                       key={tokens}
                       type="button"
                       onClick={() => onUpdateSettings({ max_tokens: tokens })}
-                      className={`py-1.5 rounded-lg text-xs font-semibold border transition ${
-                        settings.max_tokens === tokens
-                          ? 'bg-emerald-600 text-white border-emerald-500 shadow-xs'
-                          : 'bg-white dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:border-emerald-500'
-                      }`}
+                      className={`py-1.5 rounded-lg text-xs font-semibold border transition ${settings.max_tokens === tokens
+                        ? 'bg-emerald-600 text-white border-emerald-500 shadow-xs'
+                        : 'bg-white dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:border-emerald-500'
+                        }`}
                     >
                       {tokens}
                     </button>

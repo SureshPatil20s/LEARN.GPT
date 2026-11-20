@@ -103,7 +103,7 @@ export default function Home() {
         setSettings((prev) => ({ ...prev, ...parsed, use_rag: false }));
         if (parsed.default_model) setSelectedModel(parsed.default_model);
       }
-    } catch {}
+    } catch { }
     setUseRag(false); // Strictly OFF by default
   }, []);
 
@@ -112,7 +112,7 @@ export default function Home() {
       const next = { ...prev, ...updates };
       try {
         localStorage.setItem('learn_gpt_settings', JSON.stringify(next));
-      } catch {}
+      } catch { }
       if (updates.default_model) setSelectedModel(updates.default_model);
       if (typeof updates.use_rag === 'boolean') setUseRag(updates.use_rag);
       return next;
@@ -141,7 +141,7 @@ export default function Home() {
         const def = data.find((m) => m.is_default);
         if (def) setSelectedModel(def.id);
       })
-      .catch(() => {});
+      .catch(() => { });
 
     // Dynamic backend health check
     checkBackendHealth()
@@ -326,8 +326,8 @@ export default function Home() {
     const displayContent = imageDataUrl
       ? `![Attached Image](${imageDataUrl})\n\n${content || 'Please extract all text (OCR) from this image and summarize its content.'}`
       : attachedFile
-      ? `📄 **[Attached Document: ${attachedFile.name}]**\n\n${content || 'Please explain the contents of this document.'}`
-      : content;
+        ? `📄 **[Attached Document: ${attachedFile.name}]**\n\n${content || 'Please explain the contents of this document.'}`
+        : content;
 
     const userMsg: Message = {
       id: `temp-${Date.now()}`,
@@ -444,13 +444,13 @@ export default function Home() {
                 );
               }
             })
-            .catch(() => {});
+            .catch(() => { });
 
           // Refresh conversations to update order / intelligent titles
           if (user && user.provider !== 'guest') {
             getConversations()
               .then(setConversations)
-              .catch(() => {});
+              .catch(() => { });
           }
         }
       },
@@ -505,7 +505,7 @@ export default function Home() {
   const handleClearHistory = async () => {
     try {
       for (const c of conversations) {
-        await deleteConversation(c.id).catch(() => {});
+        await deleteConversation(c.id).catch(() => { });
       }
       setConversations([]);
       setActiveConversationId(null);
