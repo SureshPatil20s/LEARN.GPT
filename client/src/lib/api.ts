@@ -381,6 +381,12 @@ export async function clearAllMemories(): Promise<void> {
   await request<void>('/memory', { method: 'DELETE' });
 }
 
+export async function autoSummarizeMemories(): Promise<{ message: string; added_count: number; memories: MemoryItem[] }> {
+  return request<{ message: string; added_count: number; memories: MemoryItem[] }>('/memory/auto-summarize', {
+    method: 'POST',
+  });
+}
+
 export const FALLBACK_MODELS: ModelOption[] = [
   { id: 'auto', name: '🤖 Auto (Gemini + Groq)', provider: 'Smart Router', description: 'Automatically uses Gemini for all tasks; Groq as fallback on rate limit', is_default: true },
   { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash', provider: 'Google AI', description: 'Fast multimodal reasoning with real-world grounding' },

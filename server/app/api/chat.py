@@ -597,6 +597,21 @@ async def _handle_message_stream(
             except Exception:
                 pass  # Fallback title already set above; keep it
 
+        # Automatic conversational memory extraction (runs asynchronously in background)
+        if getattr(msg_in, "use_memory", True) and current_user.provider != "guest":
+            try:
+                import asyncio
+                from server.app.services.memory_service import background_memory_extractor
+                asyncio.create_task(
+                    background_memory_extractor(
+                        user_message=msg_in.content,
+                        assistant_response=complete_response,
+                        user_id=current_user.id
+                    )
+                )
+            except Exception:
+                pass
+
         # Send completion
         yield "data: [DONE]\n\n"
 

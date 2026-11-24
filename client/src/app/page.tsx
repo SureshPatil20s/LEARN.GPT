@@ -33,6 +33,7 @@ import {
   toggleMemory,
   deleteMemory,
   clearAllMemories,
+  autoSummarizeMemories,
   streamMessage,
   submitMessageFeedback,
   updateConversation,
@@ -652,6 +653,11 @@ export default function Home() {
         onClearAllMemories={async () => {
           await clearAllMemories();
           setMemories([]);
+        }}
+        onAutoSummarizeMemories={async () => {
+          const res = await autoSummarizeMemories();
+          setMemories(res.memories);
+          return res;
         }}
         models={models}
         onClearHistory={handleClearHistory}

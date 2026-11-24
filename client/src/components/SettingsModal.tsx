@@ -29,6 +29,7 @@ import {
   Bot,
   ChevronRight,
   FileText,
+  RefreshCw,
 } from 'lucide-react';
 
 interface SettingsModalProps {
@@ -41,6 +42,7 @@ interface SettingsModalProps {
   onToggleMemory: (id: string) => Promise<void>;
   onDeleteMemory: (id: string) => Promise<void>;
   onClearAllMemories: () => Promise<void>;
+  onAutoSummarizeMemories?: () => Promise<{ message: string; added_count: number; memories: MemoryItem[] }>;
   models: ModelOption[];
   onClearHistory: () => void;
   // Workspace Tool Launchers
@@ -64,6 +66,7 @@ export default function SettingsModal({
   onToggleMemory,
   onDeleteMemory,
   onClearAllMemories,
+  onAutoSummarizeMemories,
   models,
   onClearHistory,
   onOpenLearningMode,
@@ -80,6 +83,39 @@ export default function SettingsModal({
   const [activeTab, setActiveTab] = useState<'workspace' | 'general' | 'model'>('workspace');
   const [newMemoryText, setNewMemoryText] = useState('');
   const [isAddingMemory, setIsAddingMemory] = useState(false);
+  const [isSummarizing, setIsSummarizing] = useState(false);
+  const [summarizeFeedback, setSummarizeFeedback] = useState<string | null>(null);
+
+  const handleAutoSummarize = async () => {
+    if (!onAutoSummarizeMemories || isSummarizing) return;
+    setIsSummarizing(true);
+    setSummarizeFeedback(null);
+    try {
+      const res = await onAutoSummarizeMemories();
+      setSummarizeFeedback(res.message);
+      setTimeout(() => setSummarizeFeedback(null), 4000);
+    } catch {
+      setSummarizeFeedback('Could not scan conversations right now.');
+      setTimeout(() => setSummarizeFeedback(null), 3000);
+    } finally {
+      setIsSummarizing(false);
+    }
+  };
+
+  const getCategoryBadge = (cat?: string) => {
+    switch ((cat || '').toLowerCase()) {
+      case 'personal':
+        return { label: 'Personal', color: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20' };
+      case 'preference':
+        return { label: 'Preference', color: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' };
+      case 'goal':
+        return { label: 'Goal', color: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20' };
+      case 'choice':
+        return { label: 'Choice', color: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20' };
+      default:
+        return { label: 'Fact', color: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20' };
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -463,6 +499,33 @@ export default function SettingsModal({
                   </button>
                 </div>
 
+                {/* Auto-Extract Banner & Action */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20">
+                  <div className="flex items-center gap-2 text-xs text-zinc-700 dark:text-zinc-300">
+                    <Sparkles className="w-4 h-4 text-purple-500 shrink-0" />
+                    <span>
+                      <strong className="text-purple-600 dark:text-purple-400">Auto-Remembers:</strong> Personal details, preferences &amp; goals are automatically saved as you chat.
+                    </span>
+                  </div>
+                  {onAutoSummarizeMemories && (
+                    <button
+                      type="button"
+                      onClick={handleAutoSummarize}
+                      disabled={isSummarizing}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs transition shadow-xs shrink-0 disabled:opacity-50"
+                      title="Scan recent conversations to auto-extract memories"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isSummarizing ? 'animate-spin' : ''}`} />
+                      <span>{isSummarizing ? 'Scanning...' : 'Auto-Summarize'}</span>
+                    </button>
+                  )}
+                </div>
+                {summarizeFeedback && (
+                  <div className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 px-2.5 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/40">
+                    ✓ {summarizeFeedback}
+                  </div>
+                )}
+
                 {/* Quick Add Starter Suggestions */}
                 <div className="space-y-1.5">
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
@@ -521,38 +584,46 @@ export default function SettingsModal({
                       </p>
                     </div>
                   ) : (
-                    memories.map((m) => (
-                      <div
-                        key={m.id}
-                        className="group flex items-center justify-between gap-3 p-2.5 rounded-xl bg-white dark:bg-[#181818] border border-zinc-200 dark:border-zinc-800 hover:border-purple-500/40 transition shadow-2xs text-xs"
-                      >
-                        <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                          <button
-                            onClick={() => onToggleMemory(m.id)}
-                            className={`shrink-0 transition ${m.is_active ? 'text-purple-600 dark:text-purple-400' : 'text-zinc-400'
-                              }`}
-                            title={m.is_active ? 'Active (Click to mute)' : 'Muted (Click to activate)'}
-                          >
-                            {m.is_active ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
-                          </button>
-                          <span
-                            className={`flex-1 break-words ${m.is_active
-                              ? 'text-zinc-800 dark:text-zinc-200 font-medium'
-                              : 'text-zinc-400 line-through'
-                              }`}
-                          >
-                            {m.content}
-                          </span>
-                        </div>
-                        <button
-                          onClick={() => onDeleteMemory(m.id)}
-                          className="p-1 text-zinc-400 hover:text-rose-500 transition shrink-0 opacity-80 group-hover:opacity-100"
-                          title="Forget memory"
+                    memories.map((m) => {
+                      const badge = getCategoryBadge(m.category);
+                      return (
+                        <div
+                          key={m.id}
+                          className="group flex items-center justify-between gap-3 p-2.5 rounded-xl bg-white dark:bg-[#181818] border border-zinc-200 dark:border-zinc-800 hover:border-purple-500/40 transition shadow-2xs text-xs"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))
+                          <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                            <button
+                              onClick={() => onToggleMemory(m.id)}
+                              className={`shrink-0 transition ${m.is_active ? 'text-purple-600 dark:text-purple-400' : 'text-zinc-400'
+                                }`}
+                              title={m.is_active ? 'Active (Click to mute)' : 'Muted (Click to activate)'}
+                            >
+                              {m.is_active ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
+                            </button>
+                            <div className="flex items-center gap-1.5 flex-1 min-w-0 flex-wrap">
+                              <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border shrink-0 ${badge.color}`}>
+                                {badge.label}
+                              </span>
+                              <span
+                                className={`flex-1 break-words ${m.is_active
+                                  ? 'text-zinc-800 dark:text-zinc-200 font-medium'
+                                  : 'text-zinc-400 line-through'
+                                  }`}
+                              >
+                                {m.content}
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => onDeleteMemory(m.id)}
+                            className="p-1 text-zinc-400 hover:text-rose-500 transition shrink-0 opacity-80 group-hover:opacity-100"
+                            title="Forget memory"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
 

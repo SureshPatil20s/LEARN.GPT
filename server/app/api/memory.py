@@ -144,6 +144,43 @@ def delete_memory(
     return {"message": "Memory deleted successfully"}
 
 
+class MemorySummarizeResponse(BaseModel):
+    message: str
+    added_count: int
+    memories: List[MemoryResponse]
+
+
+@router.post("/auto-summarize", response_model=MemorySummarizeResponse)
+async def auto_summarize_conversations(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Scans user's recent conversations and automatically extracts personal details,
+    preferences, goals, and choices to remember.
+    """
+    from server.app.services.memory_service import summarize_recent_conversations_to_memories
+
+    added = await summarize_recent_conversations_to_memories(
+        user_id=current_user.id,
+        db=db
+    )
+
+    all_memories = (
+        db.query(Memory)
+        .filter(Memory.user_id == current_user.id)
+        .order_by(Memory.created_at.desc())
+        .all()
+    )
+
+    msg = f"Auto-extracted {len(added)} new memory items." if added else "No new personal details or preferences found in recent chats."
+    return {
+        "message": msg,
+        "added_count": len(added),
+        "memories": all_memories
+    }
+
+
 @router.delete("")
 def clear_all_memories(
     db: Session = Depends(get_db),
