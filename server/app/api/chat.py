@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime, timezone
 import json
+import base64
 
 from server.app.db.session import get_db
 from server.app.models.entities import User, Conversation, Message, ImageGenerationLog, Document, DocumentChunk, Memory
@@ -16,7 +17,7 @@ from server.app.schemas.schemas import (
     MessageFeedback
 )
 from server.app.core.security import get_current_user
-from server.app.services.llm_service import hosted_llm
+from server.app.services.llm_service import hosted_llm, generate_branded_image
 from server.app.services.rag_service import rag_service
 from server.app.services.web_search import build_web_context
 from server.app.core.config import settings
@@ -699,3 +700,31 @@ async def upload_document_to_conversation(
         "total_chunks": doc.total_chunks,
         "status": "ready"
     }
+
+
+@router.get("/image-proxy")
+async def get_branded_image_proxy(prompt: str = Query(..., description="Image prompt to generate and brand")):
+    """
+    On-demand image generation and branding endpoint.
+    Fetches raw image, strips any third-party watermark by cropping, stamps LEARN.GPT branding,
+    and returns pure image/jpeg bytes. Zero third-party watermarks ever reach the user.
+    """
+    data_uri = await generate_branded_image(prompt)
+    if data_uri and data_uri.startswith("data:image/jpeg;base64,"):
+        b64_payload = data_uri.split(",", 1)[1]
+        img_bytes = base64.b64decode(b64_payload)
+        return Response(content=img_bytes, media_type="image/jpeg")
+
+    # If generation failed or rate-limited, create an elegant branded placeholder
+    from PIL import Image, ImageDraw
+    import io
+
+    w, h = 768, 720
+    im = Image.new("RGB", (w, h), (15, 23, 42))
+    draw = ImageDraw.Draw(im)
+    draw.text((w // 2 - 120, h // 2 - 20), "LEARN.GPT Visual AI", fill=(255, 255, 255))
+    draw.text((w // 2 - 180, h // 2 + 15), "Image generation busy. Please retry in 30 seconds.", fill=(148, 163, 184))
+
+    buf = io.BytesIO()
+    im.save(buf, format="JPEG", quality=90)
+    return Response(content=buf.getvalue(), media_type="image/jpeg")

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 200" width="760" height="200">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6366F1"/>
+      <stop offset="1" stop-color="#06B6D4"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(20 20) scale(0.3125)">
+    <rect width="512" height="512" rx="116" fill="url(#g)"/>
+    <g fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M178 120 V348 H318" stroke-width="58"/>
+      <path d="M178 215 L300 190 L388 262 L338 348" stroke-width="10" opacity=".75"/>
+    </g>
+    <circle cx="300" cy="190" r="20" fill="#fff"/>
+    <circle cx="388" cy="262" r="20" fill="#fff"/>
+    <circle cx="338" cy="348" r="34" fill="#fff"/>
+    <circle cx="338" cy="348" r="14" fill="#6366F1"/>
+  </g>
+  <text x="206" y="116" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="72" font-weight="800" letter-spacing="-1" fill="#0F172A">LEARN<tspan fill="url(#g)">.GPT</tspan></text>
+  <text x="209" y="152" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="22" font-weight="500" letter-spacing="6" fill="#64748B">AI LEARNING PLATFORM</text>
+</svg>

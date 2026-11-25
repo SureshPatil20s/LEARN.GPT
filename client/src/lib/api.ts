@@ -33,7 +33,7 @@ export function setToken(token: string | null) {
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const token = getToken();
+  let token = getToken();
   const headers = new Headers(options.headers || {});
   
   if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
@@ -43,10 +43,30 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  const res = await fetch(`${API_BASE}${endpoint}`, {
+  let res = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
     headers,
   });
+
+  // Automatic session recovery on 401 (session expired / invalid token)
+  if (res.status === 401 && !endpoint.includes('/auth/')) {
+    try {
+      const guestRes = await fetch(`${API_BASE}/auth/guest`, { method: 'POST' });
+      if (guestRes.ok) {
+        const guestData = await guestRes.json();
+        if (guestData.access_token) {
+          setToken(guestData.access_token);
+          headers.set('Authorization', `Bearer ${guestData.access_token}`);
+          res = await fetch(`${API_BASE}${endpoint}`, {
+            ...options,
+            headers,
+          });
+        }
+      }
+    } catch {
+      // ignore and let normal error handling run
+    }
+  }
 
   if (!res.ok) {
     if (res.status === 401) {
@@ -393,7 +413,7 @@ export const FALLBACK_MODELS: ModelOption[] = [
   { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash Lite', provider: 'Google AI', description: 'Ultra-fast lightweight Gemini model for rapid queries' },
   { id: 'qwen/qwen3.8-27b', name: 'Qwen 3.8 27B (Groq)', provider: 'Groq', description: 'Advanced reasoning & multilingual — Groq LPU speed' },
   { id: 'openai/gpt-oss-120b', name: 'GPT-OSS 120B (Groq)', provider: 'Groq', description: 'High-capacity open reasoning model — Groq LPU speed' },
-  { id: 'flux-image-gen', name: '🎨 AI Image Generator', provider: 'Gemini / Pollinations', description: 'Photorealistic image generation with automatic fallback' },
+  { id: 'flux-image-gen', name: '🎨 LEARN.GPT Visual AI', provider: 'Qwen & Visual Studio', description: 'Photorealistic image and diagram generation powered by LEARN.GPT' },
   { id: 'gemini-vision', name: '👁️ Vision & OCR (Gemini)', provider: 'Google AI', description: 'Read & extract text from images, scans, and diagrams via Gemini' },
 ];
 
@@ -442,11 +462,12 @@ export async function streamMessage({
 }) {
   const token = getToken();
   try {
-    const res = await fetch(`${API_BASE}/messages/stream`, {
+    let activeToken = token;
+    let res = await fetch(`${API_BASE}/messages/stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {}),
       },
       body: JSON.stringify({
         conversation_id: conversationId,
@@ -462,6 +483,42 @@ export async function streamMessage({
         system_prompt: systemPrompt,
       }),
     });
+
+    // Auto-recover session on 401
+    if (res.status === 401) {
+      try {
+        const guestRes = await fetch(`${API_BASE}/auth/guest`, { method: 'POST' });
+        if (guestRes.ok) {
+          const guestData = await guestRes.json();
+          if (guestData.access_token) {
+            setToken(guestData.access_token);
+            activeToken = guestData.access_token;
+            res = await fetch(`${API_BASE}/messages/stream`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${activeToken}`,
+              },
+              body: JSON.stringify({
+                conversation_id: conversationId,
+                content,
+                model,
+                use_rag: useRag,
+                use_web_search: useWebSearch,
+                use_memory: useMemory,
+                temperature,
+                max_tokens: maxTokens,
+                image_data: imageData,
+                attached_filename: attachedFilename,
+                system_prompt: systemPrompt,
+              }),
+            });
+          }
+        }
+      } catch {
+        // ignore recovery error
+      }
+    }
 
     if (!res.ok) {
       const errText = await res.text();

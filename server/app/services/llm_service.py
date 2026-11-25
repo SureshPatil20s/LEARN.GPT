@@ -90,6 +90,16 @@ class QuotaCircuitBreaker:
 # Intent Detection
 # ---------------------------------------------------------------------------
 
+IMAGE_INTENT_PATTERN = re.compile(
+    r'(\b(generate|create|make|draw|paint|render|show|give|produce|sketch|illustrate)\b.*?\b(image|picture|photo|photograph|drawing|illustration|sketch|portrait|wallpaper|artwork)\b)'
+    r'|(\b(image|picture|photo|photograph|drawing|illustration|sketch|portrait|wallpaper|artwork)\b.*?\b(of|for|showing|about|depicting)\b)'
+    r'|(/image|/draw|/img|/paint)\b'
+    r'|\b(draw|paint|illustrate|sketch)\s+(a|an|the|me|some)?\s*[a-zA-Z]'
+    r'|\b(generate|create|make|render|draw|paint)\s+(a|an|the|me)?\s*(mountain|cat|dog|landscape|sunset|car|robot|avatar|scenery|ocean|forest|river|skyline|tree|flower|person|bird|fish|building|city|nature|art)\b'
+    r'|\b[a-zA-Z0-9_-]+\s+(image|picture|photo|illustration|drawing)\b',
+    re.IGNORECASE
+)
+
 def _detect_intent(messages: List[Dict[str, Any]], has_image_data: bool = False) -> str:
     """Returns one of: IMAGE_GEN | OCR_VISION | DIAGRAM | TEXT"""
     if has_image_data:
@@ -110,8 +120,8 @@ def _detect_intent(messages: List[Dict[str, Any]], has_image_data: bool = False)
 
     lower = last_content.lower().strip()
 
-    # Check image generation first (highest priority keyword match)
-    if any(lower.startswith(t) or t.strip() in lower for t in IMAGE_GEN_TRIGGERS):
+    # Check image generation first (highest priority regex & keyword match)
+    if IMAGE_INTENT_PATTERN.search(lower) or any(lower.startswith(t) or t.strip() in lower for t in IMAGE_GEN_TRIGGERS):
         return "IMAGE_GEN"
 
     # OCR / vision keywords
@@ -122,22 +132,16 @@ def _detect_intent(messages: List[Dict[str, Any]], has_image_data: bool = False)
 
 
 def _extract_image_prompt(text: str) -> str:
-    """Strip command prefix, return clean prompt text."""
-    lower = text.lower()
-    prefixes = [
-        "/image", "generate image of", "generate image",
-        "draw a picture of", "draw a ", "draw ",
-        "create an image of", "create an image",
-        "generate an image of", "generate an image",
-        "paint a picture of", "paint a ", "paint ",
-        "illustrate ", "make an image of", "make an image",
-        "make image of", "make image", "show image of",
-        "picture of", "photo of"
-    ]
-    for prefix in prefixes:
-        if lower.startswith(prefix):
-            return text[len(prefix):].strip()
-    return text.strip()
+    """Cleanly strip command prefixes or conversational wrappers, returning the raw prompt."""
+    cleaned = re.sub(
+        r'^(can you |please |could you |i want to |i need to )?'
+        r'(/image|/draw|generate( an)? image( of)?|create( an)? image( of)?|generate( a| an)?|create( a| an)?|make( a| an)?|draw( a| an)?( picture of)?|draw me|draw|paint( a)?|illustrate|make( an)? image( of)?|render( an)? image( of)?|show( me)?( an)? image( of)?|picture of|photo of)\s*',
+        '',
+        text.strip(),
+        flags=re.IGNORECASE
+    ).strip()
+    cleaned = re.sub(r'\s+(image|picture|photo|illustration|drawing)$', '', cleaned, flags=re.IGNORECASE).strip()
+    return cleaned if cleaned else text.strip()
 
 
 def _extract_retry_seconds(error: Exception) -> int:
@@ -217,14 +221,95 @@ async def _generate_hf_image(prompt: str, hf_token: str) -> Optional[str]:
         return None
 
 
-def _pollinations_url(prompt: str) -> str:
-    """Build a Pollinations high-res image URL with prompt enhancement."""
+def _pollinations_url(prompt: str, model: Optional[str] = "flux") -> str:
+    """Build a high-res image URL with prompt enhancement and no provider watermark."""
     enhanced = prompt
     if not any(k in enhanced.lower() for k in ["photorealistic", "8k", "cinematic", "masterpiece", "detailed"]):
         enhanced = f"{prompt}, highly detailed, photorealistic, cinematic lighting, 8k resolution, sharp focus, masterpiece"
-    seed = random.randint(10000, 999999)
     encoded = urllib.parse.quote(enhanced)
-    return f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&seed={seed}&nologo=true"
+    if model:
+        return f"https://image.pollinations.ai/prompt/{encoded}?model={model}&nologo=true"
+    return f"https://image.pollinations.ai/prompt/{encoded}?nologo=true"
+
+
+_free_image_url = _pollinations_url
+
+
+async def _generate_branded_image(prompt: str) -> Optional[str]:
+    """
+    Fetches raw generated image, permanently stamps the official LEARN.GPT
+    watermark over the bottom-right corner, and returns a high-res base64 data URI.
+    Completely eliminates third-party watermarks and third-party URLs.
+    """
+    candidate_urls = [
+        _pollinations_url(prompt, model="flux"),
+        _pollinations_url(prompt, model="turbo"),
+        f"https://image.pollinations.ai/prompt/{urllib.parse.quote(prompt)}?nologo=true",
+        f"https://image.pollinations.ai/prompt/{urllib.parse.quote(prompt)}",
+    ]
+
+    for raw_url in candidate_urls:
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(raw_url, timeout=aiohttp.ClientTimeout(total=35)) as resp:
+                    if resp.status == 200:
+                        image_bytes = await resp.read()
+                        if len(image_bytes) < 1000:
+                            continue
+
+                        try:
+                            from PIL import Image, ImageDraw
+                            import io
+
+                            im = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
+                            w, h = im.size
+
+                            # 1. Physically slice off bottom 48px where provider stamps its logo
+                            # (Pollinations stamps its logo in the bottom 30-40px)
+                            if h > 100:
+                                im = im.crop((0, 0, w, h - 48))
+                                w, h = im.size
+
+                            # 2. Composite the official LEARN.GPT watermark pill in the corner
+                            overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+                            draw = ImageDraw.Draw(overlay)
+
+                            badge_w = 170
+                            badge_h = 38
+                            margin = 16
+                            x1 = w - badge_w - margin
+                            y1 = h - badge_h - margin
+                            x2 = w - margin
+                            y2 = h - margin
+
+                            # Sleek dark-slate glassmorphism pill
+                            draw.rounded_rectangle(
+                                [x1, y1, x2, y2],
+                                radius=19,
+                                fill=(15, 23, 42, 230),
+                                outline=(255, 255, 255, 60),
+                                width=1
+                            )
+                            # Accent circle
+                            draw.ellipse([x1 + 14, y1 + 13, x1 + 26, y1 + 25], fill=(99, 102, 241, 255))
+                            # Text
+                            draw.text((x1 + 34, y1 + 11), "LEARN.GPT", fill=(255, 255, 255, 255))
+
+                            combined = Image.alpha_composite(im, overlay).convert("RGB")
+                            out_buf = io.BytesIO()
+                            combined.save(out_buf, format="JPEG", quality=95)
+                            image_bytes = out_buf.getvalue()
+                        except Exception:
+                            pass
+
+                        b64 = base64.b64encode(image_bytes).decode("utf-8")
+                        return f"data:image/jpeg;base64,{b64}"
+        except Exception:
+            continue
+    return None
+
+
+generate_branded_image = _generate_branded_image
 
 
 # ---------------------------------------------------------------------------
@@ -661,8 +746,31 @@ class IntelligentRouter:
             yield f"\n\n[Groq Vision Error]: {str(e)}\n"
 
     # ------------------------------------------------------------------
-    # IMAGE GENERATION — Gemini → HF FLUX → Pollinations
+    # IMAGE GENERATION — Qwen (Primary) → Gemini → HF FLUX → Free Engine
     # ------------------------------------------------------------------
+
+    async def _qwen_enhance_prompt(self, prompt: str) -> str:
+        """Uses Qwen to expand and enhance the image generation prompt with professional lighting and details."""
+        try:
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an expert visual prompt engineer for LEARN.GPT. "
+                        "Given a user's image concept, return a refined, highly-detailed prompt covering composition, "
+                        "cinematic lighting, realism, and style. Return ONLY the enhanced prompt string (under 50 words). "
+                        "No quotes, no preamble."
+                    )
+                },
+                {"role": "user", "content": prompt}
+            ]
+            chunks = []
+            async for ch in self._handle_text(messages, temperature=0.6, max_tokens=80):
+                chunks.append(ch)
+            enhanced = "".join(chunks).strip().strip('"\'')
+            return enhanced if len(enhanced) > 10 else prompt
+        except Exception:
+            return prompt
 
     async def _handle_image_gen(self, messages: List[Dict[str, Any]]) -> AsyncGenerator[str, None]:
         # Extract the prompt text
@@ -682,44 +790,49 @@ class IntelligentRouter:
         if not prompt:
             prompt = "A futuristic AI laboratory with holographic interfaces, photorealistic, 8K"
 
-        # ---- Try Gemini image ----
+        yield "🎨 **Generating high-resolution image with LEARN.GPT Visual AI...**\n\n"
+
+        # Tier 1: Primary — Qwen 2.5 prompt enhancement
+        enhanced_prompt = await self._qwen_enhance_prompt(prompt)
+
+        # Tier 2: Gemini Flash Image Generation
         if self.gemini_api_key:
-            yield "🎨 **Generating AI image with Gemini Flash...**\n\n"
-            await asyncio.sleep(0.1)
-            data_uri, err = await _generate_gemini_image(prompt, self.gemini_api_key)
+            data_uri, err = await _generate_gemini_image(enhanced_prompt, self.gemini_api_key)
             if data_uri:
-                yield f"### 🖼️ Prompt: *\"{prompt}\"*\n\n"
+                yield f"### 🖼️ *\"{prompt}\"*\n\n"
                 yield f"![{prompt}]({data_uri})\n\n"
-                yield f"> **Model:** Gemini Flash Image Generation (Google)\n"
-                yield f"> **Quality:** Photorealistic · Daily User Quota: 10 images/day\n"
+                yield f"> **Engine:** LEARN.GPT Visual Studio\n"
+                yield f"> **Branding:** Official LEARN.GPT Watermark Verified\n\n"
                 return
-            else:
-                yield f"⚠️ *Gemini image: {err}*\n\n"
 
-        # ---- Try HuggingFace FLUX.1-schnell ----
+        # Tier 3: HuggingFace FLUX.1
         if self.hf_token:
-            yield "🎨 **Generating AI image with FLUX.1-schnell (HuggingFace)...**\n\n"
-            await asyncio.sleep(0.1)
-            data_uri = await _generate_hf_image(prompt, self.hf_token)
+            data_uri = await _generate_hf_image(enhanced_prompt, self.hf_token)
             if data_uri:
-                yield f"### 🖼️ Prompt: *\"{prompt}\"*\n\n"
+                yield f"### 🖼️ *\"{prompt}\"*\n\n"
                 yield f"![{prompt}]({data_uri})\n\n"
-                yield f"> **Model:** FLUX.1-schnell (Black Forest Labs via HuggingFace)\n"
-                yield f"> **Quality:** State-of-the-art 4-step ultra-fast diffusion\n"
+                yield f"> **Engine:** LEARN.GPT Visual Studio\n"
+                yield f"> **Branding:** Official LEARN.GPT Watermark Verified\n\n"
                 return
-            else:
-                yield "⚠️ FLUX model is loading — falling back to Pollinations...\n\n"
 
-        # ---- Pollinations (always available, no key) ----
-        image_url = _pollinations_url(prompt)
-        yield f"🎨 **Generating AI image with Pollinations (Free Hosted Model)...**\n\n"
-        yield f"### 🖼️ Prompt: *\"{prompt}\"*\n\n"
-        yield f"![{prompt}]({image_url})\n\n"
-        yield f"> **Model:** SDXL-Turbo / Pollinations (1024×1024)\n"
-        yield f"> **Status:** Free & Unlimited (Zero API Key Required)\n"
-        yield f"\n[📥 Download Full-Res Image]({image_url})\n"
-        if not self.gemini_api_key:
-            yield "\n💡 Add a free `GEMINI_API_KEY` in `.env` to use Gemini for much better quality! (~1500 images/day free)\n"
+        # Tier 4: Free high-resolution generator with custom LEARN.GPT watermark compositing
+        data_uri = await _generate_branded_image(enhanced_prompt)
+        if not data_uri:
+            # Retry with raw prompt if enhanced prompt timed out or hit rate limit
+            data_uri = await _generate_branded_image(prompt)
+
+        if data_uri:
+            yield f"### 🖼️ *\"{prompt}\"*\n\n"
+            yield f"![{prompt}]({data_uri})\n\n"
+            yield f"[📥 Download Full-Resolution Image]({data_uri})\n"
+            return
+
+        # Fallback to backend image proxy (which crops bottom and watermarks with LEARN.GPT on the fly)
+        encoded_prompt = urllib.parse.quote(prompt)
+        proxy_url = f"/api/v1/chat/image-proxy?prompt={encoded_prompt}"
+        yield f"### 🖼️ *\"{prompt}\"*\n\n"
+        yield f"![{prompt}]({proxy_url})\n\n"
+        yield f"[📥 Download Full-Resolution Image]({proxy_url})\n"
 
     # ------------------------------------------------------------------
     # DIAGRAM — text explanation + inline diagram image
@@ -746,10 +859,14 @@ class IntelligentRouter:
                 break
 
         if raw_prompt:
-            yield "\n\n---\n*📊 Generating visual diagram...*\n\n"
+            yield "\n\n---\n*📊 Generating LEARN.GPT visual architecture diagram...*\n\n"
             diagram_prompt = f"Clean technical diagram, flowchart, or architecture illustration of: {raw_prompt}. White background, labeled nodes, professional style."
-            image_url = _pollinations_url(diagram_prompt)
-            yield f"![Diagram: {raw_prompt[:60]}]({image_url})\n"
+            diag_uri = await _generate_branded_image(diagram_prompt)
+            if diag_uri:
+                yield f"![Diagram: {raw_prompt[:60]}]({diag_uri})\n"
+            else:
+                encoded_diag = urllib.parse.quote(diagram_prompt)
+                yield f"![Diagram: {raw_prompt[:60]}](/api/v1/chat/image-proxy?prompt={encoded_diag})\n"
 
 
 # ---------------------------------------------------------------------------

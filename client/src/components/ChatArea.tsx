@@ -440,6 +440,17 @@ export default function ChatArea({
         {children}
       </a>
     ),
+    img: ({ src, alt, ...props }: any) => (
+      <span className="relative my-6 overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-950 shadow-lg group max-w-2xl block">
+        <img
+          src={src}
+          alt={alt || 'LEARN.GPT Visual AI'}
+          className="w-full max-h-[560px] object-contain mx-auto block transition-transform duration-300 group-hover:scale-[1.01]"
+          loading="lazy"
+          {...props}
+        />
+      </span>
+    ),
     code: renderCodeBlock,
   };
 

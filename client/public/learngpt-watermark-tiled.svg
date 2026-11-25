@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" width="1200" height="800">
+  <defs>
+    <pattern id="p" width="300" height="200" patternUnits="userSpaceOnUse" patternTransform="rotate(-25)">
+      <text x="20" y="100" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="800" fill="#fff" fill-opacity=".22" stroke="#0F172A" stroke-opacity=".12" stroke-width="1">LEARN.GPT</text>
+    </pattern>
+  </defs>
+  <rect width="1200" height="800" fill="url(#p)"/>
+</svg>
